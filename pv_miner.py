@@ -2,6 +2,7 @@
 """pv-miner — web-controlled PV surplus mining daemon."""
 
 import json
+import hashlib
 import logging
 import logging.handlers
 import os
@@ -18,6 +19,10 @@ import requests as _http
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/data/config.json")
 WEB_PORT    = int(os.environ.get("WEB_PORT", "8080"))
+UPDATE_URL  = os.environ.get(
+    "UPDATE_URL",
+    "https://raw.githubusercontent.com/traktuner/pv-miner/master/pv_miner.py",
+)
 
 DEFAULT_CONFIG: dict = {
     "fronius": {
@@ -477,7 +482,13 @@ async function doUpdate(){
   msg.className='';msg.textContent='Update wird heruntergeladen...';
   try{
     const r=await fetch('/api/update',{method:'POST'});
-    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='Fehler: '+(e.error||'Update fehlgeschlagen');btn.disabled=false;return;}
+    const result=await r.json();
+    if(!r.ok){msg.className='err';msg.textContent='Fehler: '+(result.error||'Update fehlgeschlagen');btn.disabled=false;return;}
+    if(result.updated===false){
+      msg.className='ok';msg.textContent='Bereits aktuell. Kein Neustart nötig.';
+      btn.disabled=false;
+      return;
+    }
   }catch(e){msg.className='err';msg.textContent='Netzwerkfehler';btn.disabled=false;return;}
   msg.textContent='Service wird neu gestartet...';
   let tries=0;
@@ -1022,6 +1033,29 @@ def validate_config_patch(data: dict) -> str | None:
     return None
 
 
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def update_available() -> tuple[bool, str]:
+    try:
+        r = _http.get(UPDATE_URL, timeout=15)
+        r.raise_for_status()
+        remote_hash = _sha256_bytes(r.content)
+        local_hash = _sha256_file(Path(__file__))
+        return remote_hash != local_hash, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
     app = Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -1061,6 +1095,12 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         update_bin = "/usr/local/bin/pv-miner-update"
         if not Path(update_bin).exists():
             return jsonify({"error": "pv-miner-update not found (only available in the LXC appliance)"}), 400
+        available, error = update_available()
+        if error:
+            return jsonify({"error": f"Update-Prüfung fehlgeschlagen: {error}"}), 502
+        if not available:
+            logging.getLogger("main").info("Update requested, already current")
+            return jsonify({"ok": True, "updated": False})
 
         def _run():
             time.sleep(2)  # let the HTTP response reach the browser first
@@ -1071,7 +1111,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
 
         threading.Thread(target=_run, daemon=True, name="updater").start()
         logging.getLogger("main").info("Update triggered via web UI")
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "updated": True})
 
     @app.route("/api/override", methods=["POST"])
     def api_override():

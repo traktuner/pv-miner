@@ -169,6 +169,7 @@ directory="/data"
 export CONFIG_PATH="/data/config.json"
 export WEB_PORT="${WEB_PORT}"
 export TZ="${TIMEZONE}"
+export UPDATE_URL="${RAW}/pv_miner.py"
 depend() { need net localmount; after firewall; }
 EOF
 chmod +x /etc/init.d/pv-miner
@@ -189,6 +190,11 @@ wget -qO "\$NEW" "\$URL"
 python3 -c "import ast; ast.parse(open('\$NEW').read())" || {
   echo "✗ Downloaded file is not valid Python"; rm -f "\$NEW"; exit 1
 }
+if [ -f "\$BIN" ] && [ "\$(sha256sum "\$NEW" | awk '{print \$1}')" = "\$(sha256sum "\$BIN" | awk '{print \$1}')" ]; then
+  rm -f "\$NEW"
+  echo "✓ Already current"
+  exit 0
+fi
 cp "\$BIN" "\${BIN}.previous"
 mv "\$NEW" "\$BIN"
 rc-service pv-miner restart >/dev/null
