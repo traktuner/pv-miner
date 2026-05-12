@@ -567,11 +567,21 @@ class FroniusAPI:
                 continue
         return None
 
+    @staticmethod
+    def _base(host: str) -> str:
+        host = host.strip()
+        if not host.startswith(("http://", "https://")):
+            host = f"http://{host}"
+        parsed = urlparse(host)
+        netloc = parsed.netloc or parsed.path
+        scheme = parsed.scheme or "http"
+        return f"{scheme}://{netloc}"
+
     def get_powerflow(self) -> dict | None:
         host = self._cfg.get()["fronius"]["host"]
         if not host:
             return None
-        url = f"http://{host}/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+        url = f"{self._base(host)}/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
         try:
             r = _http.get(url, timeout=self._timeout)
             r.raise_for_status()
