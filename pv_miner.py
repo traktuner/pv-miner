@@ -6,6 +6,7 @@ import logging
 import logging.handlers
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -188,6 +189,14 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
   </div>
 </section>
 
+<section>
+  <h2>System</h2>
+  <div class="ov-row" style="align-items:center">
+    <button id="btn-update" onclick="doUpdate()" style="border-color:#30363d">Update (GitHub master)</button>
+    <span id="umsg"></span>
+  </div>
+</section>
+
 </main>
 <script>
 async function fetchStatus(){
@@ -248,6 +257,30 @@ async function saveCfg(){
 async function setOv(mode){
   try{await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});}catch(e){}
   fetchStatus();
+}
+async function doUpdate(){
+  const btn=document.getElementById('btn-update');
+  const msg=document.getElementById('umsg');
+  btn.disabled=true;
+  msg.className='';msg.textContent='⏳ Update wird heruntergeladen…';
+  try{
+    const r=await fetch('/api/update',{method:'POST'});
+    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='✗ '+(e.error||'Fehler');btn.disabled=false;return;}
+  }catch(e){msg.className='err';msg.textContent='✗ Netzwerkfehler';btn.disabled=false;return;}
+  msg.textContent='⏳ Service wird neu gestartet…';
+  // Poll until the service is back (up to 30 s)
+  let tries=0;
+  const poll=setInterval(async()=>{
+    tries++;
+    try{
+      await fetch('/api/status');
+      clearInterval(poll);
+      msg.className='ok';msg.textContent='✓ Update erfolgreich — Seite wird neu geladen…';
+      setTimeout(()=>location.reload(),1500);
+    }catch(e){
+      if(tries>=30){clearInterval(poll);msg.className='err';msg.textContent='✗ Service antwortet nicht — prüfe Logs';btn.disabled=false;}
+    }
+  },1000);
 }
 fetchStatus();fetchCfg();
 setInterval(fetchStatus,10000);
@@ -636,6 +669,23 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         if data.get("miner", {}).get("api_key", "").startswith("••"):
             data.setdefault("miner", {})["api_key"] = cfg_manager.get()["miner"].get("api_key", "")
         cfg_manager.update(data)
+        return jsonify({"ok": True})
+
+    @app.route("/api/update", methods=["POST"])
+    def api_update():
+        update_bin = "/usr/local/bin/pv-miner-update"
+        if not Path(update_bin).exists():
+            return jsonify({"error": "pv-miner-update not found (only available in the LXC appliance)"}), 400
+
+        def _run():
+            time.sleep(2)  # let the HTTP response reach the browser first
+            try:
+                subprocess.run([update_bin], timeout=60)
+            except Exception as exc:
+                logging.getLogger("main").error("Update failed: %s", exc)
+
+        threading.Thread(target=_run, daemon=True, name="updater").start()
+        logging.getLogger("main").info("Update triggered via web UI")
         return jsonify({"ok": True})
 
     @app.route("/api/override", methods=["POST"])
