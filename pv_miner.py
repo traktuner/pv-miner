@@ -36,6 +36,7 @@ DEFAULT_CONFIG: dict = {
         "soc_freigabe":     95,
         "soc_start_mining": 0,       # 0 = immer erlaubt; z.B. 100 = erst wenn Akku voll
         "netz_puffer_watt": 200,
+        "akku_entlade_sperre_watt": 100,
         "hysterese_watt":   300,
         "hysterese_zyklen": 2,
     },
@@ -131,7 +132,7 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
     <div class="card"><div class="lbl">Netz (&#8722;=Einspeisung)</div><div class="val" id="v-pgrid">&#8212;</div></div>
     <div class="card"><div class="lbl">PV Produktion</div><div class="val" id="v-ppv">&#8212;</div></div>
     <div class="card"><div class="lbl">Hausverbrauch</div><div class="val" id="v-pload">&#8212;</div></div>
-    <div class="card"><div class="lbl">Batterie (&#8722;=l&#228;dt)</div><div class="val" id="v-pakku">&#8212;</div></div>
+    <div class="card"><div class="lbl">Batterie (+=entl&#228;dt)</div><div class="val" id="v-pakku">&#8212;</div></div>
     <div class="card"><div class="lbl">Miner Power</div><div class="val" id="v-power">&#8212;</div></div>
   </div>
 </section>
@@ -225,6 +226,11 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
           <label>Netz-Sicherheitspuffer (W)</label>
           <input id="f-np" type="number" min="0" max="2000" oninput="updateHints()">
           <div class="hint" id="h-np">Dieser Puffer wird vom berechneten &#220;berschuss abgezogen damit kein Strom vom Netz bezogen wird. Empfehlung: 150&#8211;300 W.</div>
+        </div>
+        <div class="field">
+          <label>Akku-Entlade-Sperre (W)</label>
+          <input id="f-abs" type="number" min="0" max="2000" oninput="updateHints()">
+          <div class="hint" id="h-abs">Wenn der Fronius meldet, dass der Akku deutlich entl&#228;dt, wird im Auto-Modus nicht gestartet.</div>
         </div>
         <div class="field">
           <label>Mindest&#228;nderung Power-Target (W)</label>
@@ -334,7 +340,7 @@ function s(id){return document.getElementById(id)?.value||'';}
 
 function updateHints(){
   const sm=v('f-sm',15),sh=v('f-sh',5),sf=v('f-sf',95),ss2=v('f-sstart',0);
-  const np=v('f-np',200),hw=v('f-hw',300),hz=v('f-hz',2),pi=v('f-pi',30);
+  const np=v('f-np',200),absw=v('f-abs',100),hw=v('f-hw',300),hz=v('f-hz',2),pi=v('f-pi',30);
   const mn=v('f-mn',500),mx=v('f-mx',3400);
   const ss=s('f-ss'),ls=s('f-ls'),sl=s('f-sl');
   const te=s('f-te')==='true',ts=s('f-ts')||'18:00',tend=s('f-tend')||'07:00',tso=v('f-tso',50),ta=s('f-ta');
@@ -355,6 +361,7 @@ function updateHints(){
   }
 
   hint('h-np',`<em>${np} W</em> Sicherheitspuffer &#8212; der Miner bekommt immer ${np} W weniger als berechnet damit kein Strom vom Netz bezogen wird. Kleiner Wert = mehr Mining, größerer Wert = sicherer kein Netzbezug.`);
+  hint('h-abs',`Wenn <em>P_Akku über +${absw} W</em> liegt, wertet pv-miner das als Akku-Entladung und startet im Auto-Modus nicht neu. Das schützt vor Mining aus der Batterie bei kurzen Regelabweichungen.`);
   hint('h-hw',`Kleine Schwankungen werden ignoriert: Erst wenn die berechnete Zielleistung um mehr als <em>${hw} W</em> abweicht wird der Miner tatsächlich nachgeregelt. Verhindert ständiges Regulieren bei bewölktem Himmel.`);
 
   const delaySec=hz*pi;
@@ -396,12 +403,13 @@ async function fetchStatus(){
   try{
     const d=await(await fetch('/api/status',{cache:'no-store'})).json();
     const fw=v=>v!=null?Math.round(v)+' W':'—';
+    const fsw=v=>v!=null?(v>0?'+':'')+Math.round(v)+' W':'—';
     document.getElementById('v-soc').textContent=d.soc!=null?d.soc.toFixed(1)+'%':'—';
     document.getElementById('v-verfuegbar').textContent=fw(d.verfuegbar_w);
     document.getElementById('v-pgrid').textContent=fw(d.p_grid);
     document.getElementById('v-ppv').textContent=fw(d.p_pv);
     document.getElementById('v-pload').textContent=d.p_load!=null?Math.round(Math.abs(d.p_load))+' W':'—';
-    document.getElementById('v-pakku').textContent=fw(d.p_akku);
+    document.getElementById('v-pakku').textContent=fsw(d.p_akku);
     document.getElementById('v-power').textContent=fw(d.miner_power_w);
     const st=d.display_state||'unknown';
     const b=document.getElementById('badge');
@@ -428,6 +436,7 @@ async function fetchCfg(){
     document.getElementById('f-sf').value=d.control?.soc_freigabe??95;
     document.getElementById('f-sstart').value=d.control?.soc_start_mining??0;
     document.getElementById('f-np').value=d.control?.netz_puffer_watt??200;
+    document.getElementById('f-abs').value=d.control?.akku_entlade_sperre_watt??100;
     document.getElementById('f-hw').value=d.control?.hysterese_watt??300;
     document.getElementById('f-hz').value=d.control?.hysterese_zyklen??2;
     document.getElementById('f-ss').value=d.modes?.surplus_source||'grid';
@@ -446,7 +455,7 @@ async function saveCfg(){
   const cfg={
     fronius:{host:document.getElementById('f-fh').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
     miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim(),min_power_watt:+document.getElementById('f-mn').value,max_power_watt:+document.getElementById('f-mx').value},
-    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
+    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,akku_entlade_sperre_watt:+document.getElementById('f-abs').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
     modes:{surplus_source:document.getElementById('f-ss').value,low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value},
     time_rule:{enabled:document.getElementById('f-te').value==='true',start:document.getElementById('f-ts').value,end:document.getElementById('f-tend').value,soc_threshold:+document.getElementById('f-tso').value,action:document.getElementById('f-ta').value}
   };
@@ -808,7 +817,11 @@ class PowerController:
 
         # ── SOC freigabe: Akku voll → volle Power ───────────────────────────
         if soc >= ctrl["soc_freigabe"]:
-            return ("mine", max_w, float(max_w))
+            entlade_sperre = ctrl.get("akku_entlade_sperre_watt", 100)
+            exporting = pf["p_grid"] < -ctrl["netz_puffer_watt"]
+            battery_not_discharging = pf["p_akku"] <= entlade_sperre
+            if exporting or battery_not_discharging:
+                return ("mine", max_w, float(max_w))
 
         # ── Verfügbare Leistung berechnen ────────────────────────────────────
         puffer = ctrl["netz_puffer_watt"]
@@ -821,7 +834,11 @@ class PowerController:
             verfuegbar = pf["p_pv"] - p_load_house - puffer
         else:
             # Default: nur Netz-Einspeisung (Akku lädt zuerst)
-            verfuegbar = (abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0) - puffer
+            entlade_sperre = ctrl.get("akku_entlade_sperre_watt", 100)
+            if pf["p_akku"] > entlade_sperre:
+                verfuegbar = 0.0
+            else:
+                verfuegbar = (abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0) - puffer
 
         if verfuegbar < min_w:
             return ("mine", min_w, verfuegbar) if low_act == "minimum_power" else ("pause", 0, verfuegbar)
@@ -973,6 +990,8 @@ def validate_config_patch(data: dict) -> str | None:
             return "SOC Schutzgrenze muss zwischen 0 und 100 liegen"
         if not (0 <= int(ctrl.get("soc_hysterese", 0)) <= 50):
             return "SOC Hysterese muss zwischen 0 und 50 liegen"
+        if not (0 <= int(ctrl.get("akku_entlade_sperre_watt", 100)) <= 2000):
+            return "Akku-Entlade-Sperre muss zwischen 0 und 2000 W liegen"
         for key in ("soc_freigabe", "soc_start_mining"):
             if not (0 <= int(ctrl.get(key, 0)) <= 100):
                 return f"{key} muss zwischen 0 und 100 liegen"

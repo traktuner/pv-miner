@@ -52,6 +52,7 @@ Open the Web UI and fill in:
 
 3. Otherwise
    available = |P_Grid| − netz_puffer_watt   (only when exporting to grid)
+   P_Akku > akku_entlade_sperre_watt          → treat as no surplus
    available < min_power_watt  → pause or minimum power (configurable)
    otherwise                   → set power_target = clamp(available, min, max)
 ```
@@ -62,7 +63,7 @@ Flapping is suppressed by two independent hysteresis layers: start/stop requires
 
 ## API assumptions
 
-- Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
+- Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
 - Braiins OS: official Public REST API v1.4 endpoints: `PUT /api/v1/performance/power-target` with `{"watt": <W>}`, `PUT /api/v1/actions/pause`, `PUT /api/v1/actions/resume`, and `GET /api/v1/miner/stats`.
 
 ## Braiins OS modes
