@@ -394,15 +394,15 @@ function updateHints(){
 
 async function fetchStatus(){
   try{
-    const d=await(await fetch('/api/status')).json();
-    const fw=v=>v!=null?Math.round(v)+' W':'&#8212;';
-    document.getElementById('v-soc').textContent=d.soc!=null?d.soc.toFixed(1)+'%':'&#8212;';
-    document.getElementById('v-verfuegbar').innerHTML=fw(d.verfuegbar_w);
-    document.getElementById('v-pgrid').innerHTML=fw(d.p_grid);
-    document.getElementById('v-ppv').innerHTML=fw(d.p_pv);
-    document.getElementById('v-pload').innerHTML=d.p_load!=null?Math.round(Math.abs(d.p_load))+' W':'&#8212;';
-    document.getElementById('v-pakku').innerHTML=fw(d.p_akku);
-    document.getElementById('v-power').innerHTML=fw(d.miner_power_w);
+    const d=await(await fetch('/api/status',{cache:'no-store'})).json();
+    const fw=v=>v!=null?Math.round(v)+' W':'—';
+    document.getElementById('v-soc').textContent=d.soc!=null?d.soc.toFixed(1)+'%':'—';
+    document.getElementById('v-verfuegbar').textContent=fw(d.verfuegbar_w);
+    document.getElementById('v-pgrid').textContent=fw(d.p_grid);
+    document.getElementById('v-ppv').textContent=fw(d.p_pv);
+    document.getElementById('v-pload').textContent=d.p_load!=null?Math.round(Math.abs(d.p_load))+' W':'—';
+    document.getElementById('v-pakku').textContent=fw(d.p_akku);
+    document.getElementById('v-power').textContent=fw(d.miner_power_w);
     const st=d.display_state||'unknown';
     const b=document.getElementById('badge');
     b.className='badge '+st;
@@ -465,22 +465,29 @@ async function doUpdate(){
   const btn=document.getElementById('btn-update');
   const msg=document.getElementById('umsg');
   btn.disabled=true;
-  msg.className='';msg.textContent='&#9203; Update wird heruntergeladen…';
+  msg.className='';msg.textContent='Update wird heruntergeladen...';
   try{
     const r=await fetch('/api/update',{method:'POST'});
-    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='&#10007; '+(e.error||'Fehler');btn.disabled=false;return;}
-  }catch(e){msg.className='err';msg.textContent='&#10007; Netzwerkfehler';btn.disabled=false;return;}
-  msg.textContent='&#9203; Service wird neu gestartet…';
+    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='Fehler: '+(e.error||'Update fehlgeschlagen');btn.disabled=false;return;}
+  }catch(e){msg.className='err';msg.textContent='Netzwerkfehler';btn.disabled=false;return;}
+  msg.textContent='Service wird neu gestartet...';
   let tries=0;
+  let stable=0;
+  const started=Date.now();
   const poll=setInterval(async()=>{
     tries++;
     try{
-      await fetch('/api/status');
+      const r=await fetch('/api/status?update_poll='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('not ready');
+      await r.json();
+      stable++;
+      if(Date.now()-started<6000 || stable<2)return;
       clearInterval(poll);
-      msg.className='ok';msg.textContent='&#10003; Update erfolgreich — Seite wird neu geladen…';
-      setTimeout(()=>location.reload(),1500);
+      msg.className='ok';msg.textContent='Update erfolgreich. Seite wird neu geladen...';
+      setTimeout(()=>location.reload(),2500);
     }catch(e){
-      if(tries>=30){clearInterval(poll);msg.className='err';msg.textContent='&#10007; Service antwortet nicht — prüfe Logs';btn.disabled=false;}
+      stable=0;
+      if(tries>=60){clearInterval(poll);msg.className='err';msg.textContent='Service antwortet nicht. Bitte Logs prüfen.';btn.disabled=false;}
     }
   },1000);
 }
