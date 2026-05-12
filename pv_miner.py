@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, request
 import requests as _http
@@ -47,6 +48,14 @@ DEFAULT_CONFIG: dict = {
         "soc_low_action":     "pause",
         # "auto" | "pause" | "minimum" | "maximum"
         "manual_override":    "auto",
+    },
+    "time_rule": {
+        "enabled":       False,
+        "start":         "18:00",
+        "end":           "07:00",
+        "soc_threshold": 50,
+        # "pause" | "minimum_power"
+        "action":        "pause",
     },
     "logging": {
         "level":        "INFO",
@@ -260,6 +269,43 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
       </div>
     </div>
 
+    <div class="fsec">
+      <h3>Zeitfenster-Schutz</h3>
+      <div class="fg">
+        <div class="field">
+          <label>Regel aktiv</label>
+          <select id="f-te" onchange="updateHints()">
+            <option value="false">Aus</option>
+            <option value="true">Ein</option>
+          </select>
+          <div class="hint" id="h-te">Optionaler Schutz f&#252;r ein frei w&#228;hlbares Zeitfenster, wenn der Akku nicht weit genug geladen ist.</div>
+        </div>
+        <div class="field">
+          <label>Von Uhrzeit</label>
+          <input id="f-ts" type="time" oninput="updateHints()">
+          <div class="hint">Beginn des Zeitfensters nach lokaler Container-Zeit. Voreinstellung ist nur ein Beispiel.</div>
+        </div>
+        <div class="field">
+          <label>Bis Uhrzeit</label>
+          <input id="f-tend" type="time" oninput="updateHints()">
+          <div class="hint">Ende des Zeitfensters. Ein Fenster &#252;ber Mitternacht ist erlaubt.</div>
+        </div>
+        <div class="field">
+          <label>Wenn SOC bei oder unter (%)</label>
+          <input id="f-tso" type="number" min="0" max="100" oninput="updateHints()">
+          <div class="hint" id="h-tso"></div>
+        </div>
+        <div class="field">
+          <label>Dann</label>
+          <select id="f-ta" onchange="updateHints()">
+            <option value="pause">Miner pausieren</option>
+            <option value="minimum_power">Auf Minimalbetrieb reduzieren</option>
+          </select>
+          <div class="hint" id="h-ta"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="save-row">
       <button class="btn-save" onclick="saveCfg()">Speichern</button>
       <span id="smsg"></span>
@@ -291,6 +337,7 @@ function updateHints(){
   const np=v('f-np',200),hw=v('f-hw',300),hz=v('f-hz',2),pi=v('f-pi',30);
   const mn=v('f-mn',500),mx=v('f-mx',3400);
   const ss=s('f-ss'),ls=s('f-ls'),sl=s('f-sl');
+  const te=s('f-te')==='true',ts=s('f-ts')||'18:00',tend=s('f-tend')||'07:00',tso=v('f-tso',50),ta=s('f-ta');
 
   hint('h-pi',`Alle <em>${pi} Sekunden</em> wird der Wechselrichter abgefragt und der Miner bei Bedarf nachgeregelt.`);
   hint('h-mn',`Unter <em>${mn} W</em> lohnt sich Mining nicht mehr &#8212; bei weniger Überschuss wird pausiert (oder Minimalbetrieb aktiviert, je nach Einstellung unten).`);
@@ -330,6 +377,18 @@ function updateHints(){
     hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner wird gestoppt</em> um den Akku zu schonen. Empfohlene Einstellung &#8212; schützt die Batterie vor Tiefentladung.');
   } else {
     hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner läuft trotzdem weiter mit '+mn+' W.</em> &#9888;&#65039; Der Akku wird dabei weiter entladen. Nur sinnvoll wenn du eine tiefe Entladung bewusst akzeptierst.',true);
+  }
+
+  if(te){
+    hint('h-te',`Aktiv: Zwischen <em>${ts}</em> und <em>${tend}</em> greift diese Regel, wenn der Akku zu niedrig ist.`);
+    hint('h-tso',`Im Zeitfenster greift die Regel bei <em>${tso}% SOC oder weniger</em>.`);
+    hint('h-ta',ta==='pause'
+      ? 'Bei niedrigem SOC im Zeitfenster: <em>Miner wird pausiert.</em>'
+      : `Bei niedrigem SOC im Zeitfenster: <em>Miner wird auf ${mn} W reduziert.</em>`, ta!=='pause');
+  } else {
+    hint('h-te','Aus: Es gilt nur die normale PV-/SOC-Regelung.');
+    hint('h-tso','Wird nur verwendet, wenn die Zeitfenster-Regel aktiv ist.');
+    hint('h-ta','Wird nur verwendet, wenn die Zeitfenster-Regel aktiv ist.');
   }
 }
 
@@ -374,6 +433,11 @@ async function fetchCfg(){
     document.getElementById('f-ss').value=d.modes?.surplus_source||'grid';
     document.getElementById('f-ls').value=d.modes?.low_surplus_action||'pause';
     document.getElementById('f-sl').value=d.modes?.soc_low_action||'pause';
+    document.getElementById('f-te').value=String(!!d.time_rule?.enabled);
+    document.getElementById('f-ts').value=d.time_rule?.start||'18:00';
+    document.getElementById('f-tend').value=d.time_rule?.end||'07:00';
+    document.getElementById('f-tso').value=d.time_rule?.soc_threshold??50;
+    document.getElementById('f-ta').value=d.time_rule?.action||'pause';
     updateHints();
   }catch(e){}
 }
@@ -383,7 +447,8 @@ async function saveCfg(){
     fronius:{host:document.getElementById('f-fh').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
     miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim(),min_power_watt:+document.getElementById('f-mn').value,max_power_watt:+document.getElementById('f-mx').value},
     control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
-    modes:{surplus_source:document.getElementById('f-ss').value,low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value}
+    modes:{surplus_source:document.getElementById('f-ss').value,low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value},
+    time_rule:{enabled:document.getElementById('f-te').value==='true',start:document.getElementById('f-ts').value,end:document.getElementById('f-tend').value,soc_threshold:+document.getElementById('f-tso').value,action:document.getElementById('f-ta').value}
   };
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
@@ -491,6 +556,17 @@ class FroniusAPI:
         self._cfg     = cfg
         self._timeout = timeout
 
+    @staticmethod
+    def _first_soc(inverters: dict) -> float | None:
+        for inv in inverters.values():
+            if not isinstance(inv, dict) or "SOC" not in inv:
+                continue
+            try:
+                return float(inv["SOC"])
+            except (TypeError, ValueError):
+                continue
+        return None
+
     def get_powerflow(self) -> dict | None:
         host = self._cfg.get()["fronius"]["host"]
         if not host:
@@ -502,7 +578,9 @@ class FroniusAPI:
             data = r.json()
             site      = data["Body"]["Data"]["Site"]
             inverters = data["Body"]["Data"].get("Inverters", {})
-            soc = float(inverters.get("1", {}).get("SOC") or 100.0)
+            soc = self._first_soc(inverters)
+            if soc is None:
+                raise ValueError("Fronius response has no battery SOC")
             return {
                 "p_grid": float(site.get("P_Grid") or 0.0),
                 "p_pv":   float(site.get("P_PV")   or 0.0),
@@ -525,7 +603,15 @@ class BraiinsAPI:
         self._timeout = timeout
 
     def _base(self) -> str:
-        return f"http://{self._cfg.get()['miner']['host']}/api/v1"
+        host = self._cfg.get()["miner"]["host"].strip()
+        if not host:
+            return ""
+        if not host.startswith(("http://", "https://")):
+            host = f"http://{host}"
+        parsed = urlparse(host)
+        netloc = parsed.netloc or parsed.path
+        scheme = parsed.scheme or "http"
+        return f"{scheme}://{netloc}/api/v1"
 
     def _hdrs(self) -> dict:
         h = {"Content-Type": "application/json"}
@@ -537,8 +623,8 @@ class BraiinsAPI:
     def set_power_target(self, watt: int) -> bool:
         try:
             _http.put(
-                f"{self._base()}/miner/power-target",
-                json={"power_target": {"watt": watt}, "save_action": "SAVE_ACTION_SAVE"},
+                f"{self._base()}/performance/power-target",
+                json={"watt": watt},
                 headers=self._hdrs(), timeout=self._timeout,
             ).raise_for_status()
             logging.getLogger("api").debug("set_power_target(%dW) OK", watt)
@@ -549,8 +635,8 @@ class BraiinsAPI:
 
     def pause(self) -> bool:
         try:
-            _http.post(f"{self._base()}/miner/pause", json={},
-                       headers=self._hdrs(), timeout=self._timeout).raise_for_status()
+            _http.put(f"{self._base()}/actions/pause",
+                      headers=self._hdrs(), timeout=self._timeout).raise_for_status()
             logging.getLogger("api").debug("pause OK")
             return True
         except Exception as exc:
@@ -559,8 +645,8 @@ class BraiinsAPI:
 
     def resume(self) -> bool:
         try:
-            _http.post(f"{self._base()}/miner/resume", json={},
-                       headers=self._hdrs(), timeout=self._timeout).raise_for_status()
+            _http.put(f"{self._base()}/actions/resume",
+                      headers=self._hdrs(), timeout=self._timeout).raise_for_status()
             logging.getLogger("api").debug("resume OK")
             return True
         except Exception as exc:
@@ -573,11 +659,15 @@ class BraiinsAPI:
                           headers=self._hdrs(), timeout=self._timeout)
             r.raise_for_status()
             d  = r.json()
-            ps = d.get("power_stats", {})
+            ps = d.get("power_stats", {}) or {}
+            ms = d.get("miner_stats", {}) or {}
+            real = ms.get("real_hashrate", {}) or {}
+            last_hashrate = real.get("last_5s") or real.get("last_15s") or {}
+            power = (ps.get("approximated_consumption") or {}).get("watt", 0)
             return {
-                "power_watt":   int(ps.get("watt_current", 0)),
-                "paused":       d.get("miner_status", "") in ("PAUSED", "paused"),
-                "hashrate_ths": float(d.get("hashrate", 0)),
+                "power_watt":   int(power or 0),
+                "paused":       False,
+                "hashrate_ths": float(last_hashrate.get("gigahash_per_second", 0.0)) / 1000.0,
             }
         except Exception as exc:
             logging.getLogger("api").warning("get_status: %s", exc)
@@ -628,6 +718,38 @@ class PowerController:
         self._fronius_err = 0
         self._braiins_err = 0
 
+    @staticmethod
+    def _minute_of_day(value: str) -> int | None:
+        try:
+            hour, minute = value.split(":", 1)
+            h = int(hour)
+            m = int(minute)
+            if 0 <= h <= 23 and 0 <= m <= 59:
+                return h * 60 + m
+        except (AttributeError, ValueError):
+            pass
+        return None
+
+    def _time_rule_active(self, cfg: dict, soc: float) -> bool:
+        rule = cfg.get("time_rule", {})
+        if not rule.get("enabled"):
+            return False
+        if soc > float(rule.get("soc_threshold", 0)):
+            return False
+
+        start = self._minute_of_day(rule.get("start", "18:00"))
+        end = self._minute_of_day(rule.get("end", "07:00"))
+        if start is None or end is None:
+            self._log.warning("Invalid time_rule start/end: %r", rule)
+            return False
+        lt = time.localtime()
+        now = lt.tm_hour * 60 + lt.tm_min
+        if start == end:
+            return True
+        if start < end:
+            return start <= now < end
+        return now >= start or now < end
+
     def _decide(self, pf: dict, cfg: dict) -> tuple[str, int, float]:
         """Return (action, target_watt, verfuegbar_w)."""
         modes    = cfg.get("modes", {})
@@ -656,6 +778,11 @@ class PowerController:
         if soc < ctrl["soc_minimum"]:
             self._soc_blocked = True
             return ("mine", min_w, 0.0) if soc_act == "minimum_power" else ("pause", 0, 0.0)
+
+        # ── Optional time-window battery guard ──────────────────────────────
+        if self._time_rule_active(cfg, soc):
+            action = cfg.get("time_rule", {}).get("action", "pause")
+            return ("mine", min_w, 0.0) if action == "minimum_power" else ("pause", 0, 0.0)
 
         # ── SOC start threshold (Case 2: "erst minen wenn Akku voll") ───────
         soc_start = ctrl.get("soc_start_mining", 0)
@@ -799,6 +926,55 @@ class PowerController:
 # Flask web app
 # ---------------------------------------------------------------------------
 
+def _is_time(value: str) -> bool:
+    return PowerController._minute_of_day(value) is not None
+
+
+def validate_config_patch(data: dict) -> str | None:
+    miner = data.get("miner", {})
+    ctrl = data.get("control", {})
+    modes = data.get("modes", {})
+    time_rule = data.get("time_rule", {})
+
+    try:
+        min_w = int(miner.get("min_power_watt", 0))
+        max_w = int(miner.get("max_power_watt", 0))
+        if not (100 <= min_w <= max_w <= 10000):
+            return "Miner-Leistungsgrenzen sind ungültig"
+        if not (0 <= int(ctrl.get("soc_minimum", 0)) <= 100):
+            return "SOC Schutzgrenze muss zwischen 0 und 100 liegen"
+        if not (0 <= int(ctrl.get("soc_hysterese", 0)) <= 50):
+            return "SOC Hysterese muss zwischen 0 und 50 liegen"
+        for key in ("soc_freigabe", "soc_start_mining"):
+            if not (0 <= int(ctrl.get(key, 0)) <= 100):
+                return f"{key} muss zwischen 0 und 100 liegen"
+        if int(ctrl.get("hysterese_zyklen", 1)) < 1:
+            return "Hysterese-Zyklen müssen mindestens 1 sein"
+    except (TypeError, ValueError):
+        return "Numerische Konfigurationswerte sind ungültig"
+
+    if modes.get("surplus_source", "grid") not in ("grid", "pv_and_battery"):
+        return "Ungültige Überschuss-Quelle"
+    if modes.get("low_surplus_action", "pause") not in ("pause", "minimum_power"):
+        return "Ungültige Aktion bei wenig Überschuss"
+    if modes.get("soc_low_action", "pause") not in ("pause", "minimum_power"):
+        return "Ungültige Aktion bei niedrigem SOC"
+
+    if time_rule:
+        if time_rule.get("action", "pause") not in ("pause", "minimum_power"):
+            return "Ungültige Zeitfenster-Aktion"
+        if not _is_time(time_rule.get("start", "")) or not _is_time(time_rule.get("end", "")):
+            return "Zeitfenster-Uhrzeiten müssen gültig sein"
+        try:
+            soc_threshold = int(time_rule.get("soc_threshold", 0))
+        except (TypeError, ValueError):
+            return "Zeitfenster-SOC ist ungültig"
+        if not (0 <= soc_threshold <= 100):
+            return "Zeitfenster-SOC muss zwischen 0 und 100 liegen"
+
+    return None
+
+
 def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
     app = Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -827,6 +1003,9 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
             return jsonify({"error": "fronius.host und miner.host dürfen nicht leer sein"}), 400
         if data.get("miner", {}).get("api_key", "").startswith("••"):
             data.setdefault("miner", {})["api_key"] = cfg_manager.get()["miner"].get("api_key", "")
+        error = validate_config_patch(data)
+        if error:
+            return jsonify({"error": error}), 400
         cfg_manager.update(data)
         return jsonify({"ok": True})
 

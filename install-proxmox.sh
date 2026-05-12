@@ -29,6 +29,7 @@ ALPINE_VER=${ALPINE_VER:-3.23}
 ONBOOT=${ONBOOT:-1}
 UNPRIVILEGED=${UNPRIVILEGED:-1}
 WEB_PORT=${WEB_PORT:-8080}
+TIMEZONE=${TIMEZONE:-$(cat /etc/timezone 2>/dev/null || echo Europe/Vienna)}
 
 REPO=${REPO:-traktuner/pv-miner}
 BRANCH=${BRANCH:-master}
@@ -68,6 +69,7 @@ echo "→ Creating CTID $CTID ($CT_HOSTNAME)"
 echo "  storage: $STORAGE  (template: $TEMPLATE_STORAGE)"
 echo "  resources: ${RAM_MB} MB RAM · ${CORES} core · ${DISK_GB} GB disk"
 echo "  network: bridge=$BRIDGE · ip=$IP"
+echo "  timezone: $TIMEZONE"
 echo ""
 
 # ── Alpine template ───────────────────────────────────────────────────────────
@@ -117,8 +119,14 @@ done
 echo "→ Installing Python and dependencies (~60 s)…"
 pct exec "$CTID" -- sh << SETUP
 set -e
-apk add --no-cache python3 py3-pip >/dev/null
+apk add --no-cache python3 py3-pip tzdata >/dev/null
 mkdir -p /opt/pv-miner /data /var/log
+if [ -f "/usr/share/zoneinfo/${TIMEZONE}" ]; then
+  cp "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime
+  echo "${TIMEZONE}" > /etc/timezone
+else
+  echo "WARNING: timezone ${TIMEZONE} not found, keeping Alpine default" >&2
+fi
 python3 -m venv /opt/pv-miner/venv
 /opt/pv-miner/venv/bin/pip install --quiet flask>=3.0.0 requests>=2.31.0
 touch /var/log/pv-miner.log
@@ -135,8 +143,9 @@ pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
   \"fronius\": { \"host\": \"\", \"poll_interval_seconds\": 30 },
   \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"min_power_watt\": 500, \"max_power_watt\": 3400 },
   \"control\": { \"soc_minimum\": 15, \"soc_hysterese\": 5, \"soc_freigabe\": 95,
-                \"netz_puffer_watt\": 200, \"hysterese_watt\": 300, \"hysterese_zyklen\": 2 },
-  \"modes\":   { \"low_surplus_action\": \"pause\", \"soc_low_action\": \"pause\", \"manual_override\": \"auto\" },
+                \"soc_start_mining\": 0, \"netz_puffer_watt\": 200, \"hysterese_watt\": 300, \"hysterese_zyklen\": 2 },
+  \"modes\":   { \"surplus_source\": \"grid\", \"low_surplus_action\": \"pause\", \"soc_low_action\": \"pause\", \"manual_override\": \"auto\" },
+  \"time_rule\": { \"enabled\": false, \"start\": \"18:00\", \"end\": \"07:00\", \"soc_threshold\": 50, \"action\": \"pause\" },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
 }
 JSON"
@@ -158,6 +167,7 @@ error_log="/var/log/pv-miner.log"
 directory="/data"
 export CONFIG_PATH="/data/config.json"
 export WEB_PORT="${WEB_PORT}"
+export TZ="${TIMEZONE}"
 depend() { need net localmount; after firewall; }
 EOF
 chmod +x /etc/init.d/pv-miner

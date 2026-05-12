@@ -2,7 +2,7 @@
 
 Controls an Antminer S19j Pro (Braiins OS) based on PV surplus and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
 
-Power target is set continuously via the Braiins OS REST API. A built-in web UI handles all configuration and provides live status.
+Power target is set continuously via the Braiins OS Public REST API. A built-in web UI handles all configuration and provides live status.
 
 ## One-line install
 
@@ -38,6 +38,7 @@ Open the Web UI and fill in:
 - **Miner IP** — the Antminer running Braiins OS
 - **API Key** — optional; generate under Braiins OS → Settings → API Access
 - **max_power_watt** — check your autotuned range in the Braiins OS web interface first
+- **Zeitfenster-Schutz** — optional rule for evening/night: if SOC is at or below a configured value, pause or reduce the miner
 
 ## Control logic
 
@@ -55,7 +56,14 @@ Open the Web UI and fill in:
    otherwise                   → set power_target = clamp(available, min, max)
 ```
 
+Optional time-window protection runs after the hard SOC minimum and before PV surplus control. Example: between 18:00 and 07:00, if SOC ≤ 50%, pause the miner or reduce it to minimum power.
+
 Flapping is suppressed by two independent hysteresis layers: start/stop requires `hysterese_zyklen` consecutive confirmations; power adjustments are skipped when the delta is below `hysterese_watt`.
+
+## API assumptions
+
+- Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
+- Braiins OS: official Public REST API v1.4 endpoints: `PUT /api/v1/performance/power-target` with `{"watt": <W>}`, `PUT /api/v1/actions/pause`, `PUT /api/v1/actions/resume`, and `GET /api/v1/miner/stats`.
 
 ## Braiins OS modes
 
@@ -102,6 +110,7 @@ STORAGE=local-zfs \
 | `IP` | `dhcp` | or `192.168.1.60/24` |
 | `GATEWAY` | — | required if `IP` is static |
 | `WEB_PORT` | `8080` | |
+| `TIMEZONE` | host `/etc/timezone` or `Europe/Vienna` | used by the time-window rule |
 | `REPO` | `traktuner/pv-miner` | override to test a fork |
 | `BRANCH` | `master` | override to test a branch |
 
