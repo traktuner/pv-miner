@@ -91,11 +91,15 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
 .box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
 .fsec{margin-bottom:22px}
 .fsec h3{font-size:.78rem;color:#8b949e;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #21262d}
-.fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.fg-wide{display:grid;grid-template-columns:1fr;gap:14px}
 .field{display:flex;flex-direction:column;gap:4px}
 .field label{font-size:.76rem;color:#8b949e}
 .field input,.field select{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:7px 10px;font-size:.88rem}
 .field input:focus,.field select:focus{outline:none;border-color:#388bfd}
+.hint{font-size:.72rem;color:#6e7681;line-height:1.45;margin-top:2px}
+.hint em{font-style:normal;color:#cdd9e5;font-weight:600}
+.hint.warn em{color:#e3b341}
 .save-row{margin-top:18px;display:flex;align-items:center;gap:12px}
 .btn-save{padding:7px 22px;background:#238636;border:none;border-radius:6px;color:#fff;font-size:.88rem;font-weight:600;cursor:pointer}
 .btn-save:hover{background:#2ea043}
@@ -114,11 +118,11 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
   <h2>Status <span id="ts" class="ts"></span></h2>
   <div class="cards">
     <div class="card"><div class="lbl">Batterie SOC</div><div class="val" id="v-soc">&#8212;</div></div>
-    <div class="card"><div class="lbl">Verf&#252;gbar (f. Miner)</div><div class="val" id="v-verfuegbar">&#8212;</div></div>
-    <div class="card"><div class="lbl">P_Grid</div><div class="val" id="v-pgrid">&#8212;</div></div>
-    <div class="card"><div class="lbl">P_PV</div><div class="val" id="v-ppv">&#8212;</div></div>
+    <div class="card"><div class="lbl">Verf&#252;gbar f. Miner</div><div class="val" id="v-verfuegbar">&#8212;</div></div>
+    <div class="card"><div class="lbl">Netz (&#8722;=Einspeisung)</div><div class="val" id="v-pgrid">&#8212;</div></div>
+    <div class="card"><div class="lbl">PV Produktion</div><div class="val" id="v-ppv">&#8212;</div></div>
     <div class="card"><div class="lbl">Hausverbrauch</div><div class="val" id="v-pload">&#8212;</div></div>
-    <div class="card"><div class="lbl">Batterie</div><div class="val" id="v-pakku">&#8212;</div></div>
+    <div class="card"><div class="lbl">Batterie (&#8722;=l&#228;dt)</div><div class="val" id="v-pakku">&#8212;</div></div>
     <div class="card"><div class="lbl">Miner Power</div><div class="val" id="v-power">&#8212;</div></div>
   </div>
 </section>
@@ -138,59 +142,120 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
   <div class="box">
 
     <div class="fsec">
-      <h3>Fronius GEN24 Plus</h3>
-      <div class="fg">
-        <div class="field"><label>IP-Adresse</label><input id="f-fh" placeholder="192.168.1.xxx"></div>
-        <div class="field"><label>Poll-Intervall (s)</label><input id="f-pi" type="number" min="10" max="300"></div>
-      </div>
-    </div>
-
-    <div class="fsec">
-      <h3>Antminer (Braiins OS)</h3>
-      <div class="fg">
-        <div class="field"><label>IP-Adresse</label><input id="f-mh" placeholder="192.168.1.xxx"></div>
-        <div class="field"><label>API Key (leer = kein Auth)</label><input id="f-ak" type="password" placeholder="optional"></div>
-        <div class="field"><label>Min Power (W)</label><input id="f-mn" type="number" min="100" max="2000"></div>
-        <div class="field"><label>Max Power (W)</label><input id="f-mx" type="number" min="500" max="4000"></div>
-      </div>
-    </div>
-
-    <div class="fsec">
-      <h3>Regelparameter</h3>
-      <div class="fg">
-        <div class="field"><label>SOC Minimum (%)</label><input id="f-sm" type="number" min="0" max="100"></div>
-        <div class="field"><label>SOC Hysterese (%)</label><input id="f-sh" type="number" min="0" max="30"></div>
-        <div class="field"><label>SOC Freigabe — volle Power (%)</label><input id="f-sf" type="number" min="0" max="100"></div>
-        <div class="field"><label>SOC Mining erlaubt ab (%, 0=immer)</label><input id="f-sstart" type="number" min="0" max="100" title="0 = immer minen wenn Überschuss da. Z.B. 100 = erst minen wenn Akku voll."></div>
-        <div class="field"><label>Netz-Puffer (W)</label><input id="f-np" type="number" min="0" max="2000"></div>
-        <div class="field"><label>Hysterese Delta (W)</label><input id="f-hw" type="number" min="0" max="1000"></div>
-        <div class="field"><label>Hysterese Zyklen</label><input id="f-hz" type="number" min="1" max="10"></div>
-      </div>
-    </div>
-
-    <div class="fsec">
-      <h3>Braiins OS Betriebsmodi</h3>
+      <h3>Ger&#228;te</h3>
       <div class="fg">
         <div class="field">
-          <label>&#220;berschuss-Quelle</label>
-          <select id="f-ss">
-            <option value="grid">Nur Netz-Einspeisung (Akku l&#228;dt zuerst)</option>
-            <option value="pv_and_battery">PV &#8722; Hausverbrauch (Miner + Akku teilen Überschuss)</option>
-          </select>
+          <label>Fronius GEN24 Plus — IP</label>
+          <input id="f-fh" placeholder="192.168.1.xxx">
+          <div class="hint">IP-Adresse des Hybrid-Wechselrichters <em>mit Batterie</em> (nicht der Symo).</div>
         </div>
         <div class="field">
-          <label>Bei wenig PV-&#220;berschuss</label>
-          <select id="f-ls">
-            <option value="pause">Pausieren (Miner aus)</option>
-            <option value="minimum_power">Minimalbetrieb (~500 W, l&#228;uft immer)</option>
-          </select>
+          <label>Antminer — IP</label>
+          <input id="f-mh" placeholder="192.168.1.xxx">
+          <div class="hint">IP-Adresse des Antminers mit Braiins OS.</div>
         </div>
         <div class="field">
-          <label>Bei niedrigem Batterie-SOC</label>
-          <select id="f-sl">
-            <option value="pause">Pausieren (Batterie sch&#252;tzen)</option>
-            <option value="minimum_power">Minimalbetrieb (~500 W)</option>
+          <label>Braiins API Key (leer = kein Auth)</label>
+          <input id="f-ak" type="password" placeholder="optional">
+          <div class="hint">Unter Braiins OS &#8594; Settings &#8594; API Access generieren. Leer lassen wenn kein Auth konfiguriert.</div>
+        </div>
+        <div class="field">
+          <label>Abfrage-Intervall (Sekunden)</label>
+          <input id="f-pi" type="number" min="10" max="300" oninput="updateHints()">
+          <div class="hint" id="h-pi">Alle 30 Sekunden wird der Fronius abgefragt und der Miner nachgeregelt.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h3>Leistungsgrenzen</h3>
+      <div class="fg">
+        <div class="field">
+          <label>Minimale Miner-Leistung (W)</label>
+          <input id="f-mn" type="number" min="100" max="2000" oninput="updateHints()">
+          <div class="hint" id="h-mn">Unter diesem Wert macht Mining keinen Sinn &#8212; der Miner wird stattdessen pausiert.</div>
+        </div>
+        <div class="field">
+          <label>Maximale Miner-Leistung (W)</label>
+          <input id="f-mx" type="number" min="500" max="4000" oninput="updateHints()">
+          <div class="hint" id="h-mx">Oberes Limit. Sollte etwas unter dem Hardware-Maximum laut Braiins Autotuning liegen.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h3>Batterie-Schwellwerte</h3>
+      <div class="fg">
+        <div class="field">
+          <label>SOC Schutzgrenze (%)</label>
+          <input id="f-sm" type="number" min="0" max="100" oninput="updateHints()">
+          <div class="hint" id="h-sm">F&#228;llt der Akku unter diesen Wert, wird der Miner sofort gestoppt.</div>
+        </div>
+        <div class="field">
+          <label>SOC Wiederstart-Hysterese (%)</label>
+          <input id="f-sh" type="number" min="0" max="30" oninput="updateHints()">
+          <div class="hint" id="h-sh">Nach einem SOC-Stopp startet der Miner erst wieder wenn der Akku wieder weiter geladen ist &#8212; verhindert schnelles Ein/Ausschalten.</div>
+        </div>
+        <div class="field">
+          <label>SOC Volllast-Freigabe (%)</label>
+          <input id="f-sf" type="number" min="0" max="100" oninput="updateHints()">
+          <div class="hint" id="h-sf">Ab diesem SOC l&#228;uft der Miner auf voller Leistung &#8212; egal wie viel PV gerade produziert wird. Der Akku ist voll, der Strom muss weg.</div>
+        </div>
+        <div class="field">
+          <label>SOC: Mining erlaubt ab (%, 0 = immer)</label>
+          <input id="f-sstart" type="number" min="0" max="100" oninput="updateHints()">
+          <div class="hint" id="h-sstart">Auf 0 lassen wenn der Miner sofort starten soll sobald PV-&#220;berschuss da ist. Auf 100 setzen um erst zu minen wenn der Akku vollst&#228;ndig geladen ist.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h3>Regelverhalten</h3>
+      <div class="fg">
+        <div class="field">
+          <label>Netz-Sicherheitspuffer (W)</label>
+          <input id="f-np" type="number" min="0" max="2000" oninput="updateHints()">
+          <div class="hint" id="h-np">Dieser Puffer wird vom berechneten &#220;berschuss abgezogen damit kein Strom vom Netz bezogen wird. Empfehlung: 150&#8211;300 W.</div>
+        </div>
+        <div class="field">
+          <label>Mindest&#228;nderung Power-Target (W)</label>
+          <input id="f-hw" type="number" min="0" max="1000" oninput="updateHints()">
+          <div class="hint" id="h-hw">Kleine PV-Schwankungen werden ignoriert. Erst wenn die berechnete Leistung um mehr als diesen Wert abweicht wird der Miner nachgeregelt.</div>
+        </div>
+        <div class="field">
+          <label>Hysterese-Zyklen (Start/Stopp)</label>
+          <input id="f-hz" type="number" min="1" max="10" oninput="updateHints()">
+          <div class="hint" id="h-hz">Start und Stopp werden erst ausgef&#252;hrt wenn die Bedingung so viele Messungen in Folge erf&#252;llt ist &#8212; verhindert Fehlentscheidungen durch kurze Wolken.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fsec">
+      <h3>Betriebsmodi</h3>
+      <div class="fg-wide">
+        <div class="field">
+          <label>Woher kommt der &#220;berschuss f&#252;r den Miner?</label>
+          <select id="f-ss" onchange="updateHints()">
+            <option value="grid">Nur was ins Netz eingespeist wird (Akku l&#228;dt immer zuerst)</option>
+            <option value="pv_and_battery">PV-Produktion minus Hausverbrauch (Miner und Akku teilen gleichzeitig)</option>
           </select>
+          <div class="hint" id="h-ss"></div>
+        </div>
+        <div class="field">
+          <label>Was soll passieren wenn kein ausreichender &#220;berschuss vorhanden ist?</label>
+          <select id="f-ls" onchange="updateHints()">
+            <option value="pause">Miner pausieren (komplett aus)</option>
+            <option value="minimum_power">Miner l&#228;uft weiter auf Minimalbetrieb</option>
+          </select>
+          <div class="hint" id="h-ls"></div>
+        </div>
+        <div class="field">
+          <label>Was soll passieren wenn der Akku unter die Schutzgrenze f&#228;llt?</label>
+          <select id="f-sl" onchange="updateHints()">
+            <option value="pause">Miner pausieren (Akku sch&#252;tzen)</option>
+            <option value="minimum_power">Miner l&#228;uft weiter auf Minimalbetrieb</option>
+          </select>
+          <div class="hint" id="h-sl"></div>
         </div>
       </div>
     </div>
@@ -212,6 +277,62 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
 
 </main>
 <script>
+function hint(id,html,warn){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.innerHTML=html;
+  el.className='hint'+(warn?' warn':'');
+}
+function v(id,def){return +document.getElementById(id)?.value||def;}
+function s(id){return document.getElementById(id)?.value||'';}
+
+function updateHints(){
+  const sm=v('f-sm',15),sh=v('f-sh',5),sf=v('f-sf',95),ss2=v('f-sstart',0);
+  const np=v('f-np',200),hw=v('f-hw',300),hz=v('f-hz',2),pi=v('f-pi',30);
+  const mn=v('f-mn',500),mx=v('f-mx',3400);
+  const ss=s('f-ss'),ls=s('f-ls'),sl=s('f-sl');
+
+  hint('h-pi',`Alle <em>${pi} Sekunden</em> wird der Wechselrichter abgefragt und der Miner bei Bedarf nachgeregelt.`);
+  hint('h-mn',`Unter <em>${mn} W</em> lohnt sich Mining nicht mehr &#8212; bei weniger Überschuss wird pausiert (oder Minimalbetrieb aktiviert, je nach Einstellung unten).`);
+  hint('h-mx',`Der Miner wird maximal auf <em>${mx} W</em> gesetzt. Diesen Wert aus dem Braiins OS Autotuning-Ergebnis ablesen.`);
+  hint('h-sm',`Fällt der Akku unter <em>${sm}%</em>, wird der Miner sofort gestoppt &#8212; egal wie viel PV vorhanden ist.`);
+  hint('h-sh',`Nach einem SOC-Stopp startet der Miner erst wieder bei <em>${sm+sh}%</em> (${sm}% + ${sh}% Hysterese). Verhindert schnelles Ein-/Ausschalten wenn der Akku genau an der Grenze ist.`);
+  hint('h-sf',`Ab <em>${sf}% SOC</em> läuft der Miner auf voller Leistung (<em>${mx} W</em>) &#8212; egal wie viel PV gerade produziert wird. Der Akku ist voll und der Strom muss irgendwo hin.`);
+
+  if(ss2===0){
+    hint('h-sstart','Mining ist erlaubt sobald PV-Überschuss vorhanden ist und der SOC über der Schutzgrenze liegt. Normaler Betrieb.');
+  } else if(ss2>=100){
+    hint('h-sstart','<em>Batterie zuerst:</em> Der Miner startet erst wenn der Akku auf 100% geladen ist. Tagsüber lädt der Akku durch, abends/nachts wird dann mit dem gespeicherten Strom gemint.');
+  } else {
+    hint('h-sstart',`Der Miner startet erst wenn der Akku <em>${ss2}%</em> erreicht hat. Darunter lädt der Akku zuerst. Erst danach wird der Überschuss für Mining verwendet.`);
+  }
+
+  hint('h-np',`<em>${np} W</em> Sicherheitspuffer &#8212; der Miner bekommt immer ${np} W weniger als berechnet damit kein Strom vom Netz bezogen wird. Kleiner Wert = mehr Mining, größerer Wert = sicherer kein Netzbezug.`);
+  hint('h-hw',`Kleine Schwankungen werden ignoriert: Erst wenn die berechnete Zielleistung um mehr als <em>${hw} W</em> abweicht wird der Miner tatsächlich nachgeregelt. Verhindert ständiges Regulieren bei bewölktem Himmel.`);
+
+  const delaySec=hz*pi;
+  hint('h-hz',`Start und Stopp werden erst ausgeführt wenn die Bedingung <em>${hz} Messungen hintereinander</em> erfüllt ist (= ${delaySec} Sekunden). Eine kurze Wolke die nach ${pi}s wieder weg ist löst damit keinen Stopp aus.`);
+
+  if(ss==='grid'){
+    hint('h-ss','<em>Akku hat immer Vorrang.</em> Der Miner bekommt nur was tatsächlich ins Netz eingespeist wird &#8212; erst wenn der Akku voll ist (oder keine Kapazität mehr aufnimmt) steigt der Netz-Überschuss und der Miner startet.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8226; Akku lädt 2 kW &#8594; nur 1 kW Einspeisung &#8594; Miner läuft mit ~'+(Math.max(0,1000-np))+' W.');
+  } else {
+    const avail=Math.max(0,5000-2000-np);
+    hint('h-ss','<em>Miner und Akku teilen gleichzeitig.</em> Der Miner startet sobald PV mehr produziert als der Haushalt verbraucht &#8212; egal ob der Akku noch leer ist. Was der Miner nicht braucht, lädt den Akku.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8594; <em>'+avail+' W für den Miner.</em> Der Akku lädt mit dem Rest (oder gar nicht, falls der Miner alles zieht). Vorteil: Miner startet früher am Morgen. Nachteil: Akku lädt langsamer.');
+  }
+
+  if(ls==='pause'){
+    hint('h-ls','Wenn der Überschuss wegfällt (Wolke, Abend): <em>Miner wird komplett gestoppt.</em> Sobald wieder genug PV da ist, startet er wieder. Energiesparend &#8212; kein unnötiger Verbrauch.');
+  } else {
+    hint('h-ls','Wenn der Überschuss zu gering ist: <em>Miner läuft trotzdem weiter mit '+mn+' W.</em> Der fehlende Strom wird aus dem Akku oder dem Netz bezogen. Sinnvoll wenn der Miner warm bleiben soll oder nachts mit Batteriestrom gemint werden soll.',true);
+  }
+
+  if(sl==='pause'){
+    hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner wird gestoppt</em> um den Akku zu schonen. Empfohlene Einstellung &#8212; schützt die Batterie vor Tiefentladung.');
+  } else {
+    hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner läuft trotzdem weiter mit '+mn+' W.</em> &#9888;&#65039; Der Akku wird dabei weiter entladen. Nur sinnvoll wenn du eine tiefe Entladung bewusst akzeptierst.',true);
+  }
+}
+
 async function fetchStatus(){
   try{
     const d=await(await fetch('/api/status')).json();
@@ -253,6 +374,7 @@ async function fetchCfg(){
     document.getElementById('f-ss').value=d.modes?.surplus_source||'grid';
     document.getElementById('f-ls').value=d.modes?.low_surplus_action||'pause';
     document.getElementById('f-sl').value=d.modes?.soc_low_action||'pause';
+    updateHints();
   }catch(e){}
 }
 async function saveCfg(){
@@ -278,23 +400,22 @@ async function doUpdate(){
   const btn=document.getElementById('btn-update');
   const msg=document.getElementById('umsg');
   btn.disabled=true;
-  msg.className='';msg.textContent='⏳ Update wird heruntergeladen…';
+  msg.className='';msg.textContent='&#9203; Update wird heruntergeladen…';
   try{
     const r=await fetch('/api/update',{method:'POST'});
-    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='✗ '+(e.error||'Fehler');btn.disabled=false;return;}
-  }catch(e){msg.className='err';msg.textContent='✗ Netzwerkfehler';btn.disabled=false;return;}
-  msg.textContent='⏳ Service wird neu gestartet…';
-  // Poll until the service is back (up to 30 s)
+    if(!r.ok){const e=await r.json();msg.className='err';msg.textContent='&#10007; '+(e.error||'Fehler');btn.disabled=false;return;}
+  }catch(e){msg.className='err';msg.textContent='&#10007; Netzwerkfehler';btn.disabled=false;return;}
+  msg.textContent='&#9203; Service wird neu gestartet…';
   let tries=0;
   const poll=setInterval(async()=>{
     tries++;
     try{
       await fetch('/api/status');
       clearInterval(poll);
-      msg.className='ok';msg.textContent='✓ Update erfolgreich — Seite wird neu geladen…';
+      msg.className='ok';msg.textContent='&#10003; Update erfolgreich — Seite wird neu geladen…';
       setTimeout(()=>location.reload(),1500);
     }catch(e){
-      if(tries>=30){clearInterval(poll);msg.className='err';msg.textContent='✗ Service antwortet nicht — prüfe Logs';btn.disabled=false;}
+      if(tries>=30){clearInterval(poll);msg.className='err';msg.textContent='&#10007; Service antwortet nicht — prüfe Logs';btn.disabled=false;}
     }
   },1000);
 }
