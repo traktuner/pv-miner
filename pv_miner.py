@@ -134,10 +134,10 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
   <div class="cards">
     <div class="card"><div class="lbl">Batterie SOC</div><div class="val" id="v-soc">&#8212;</div></div>
     <div class="card"><div class="lbl">Verf&#252;gbar f. Miner</div><div class="val" id="v-verfuegbar">&#8212;</div></div>
-    <div class="card"><div class="lbl">Netz (&#8722;=Einspeisung)</div><div class="val" id="v-pgrid">&#8212;</div></div>
+    <div class="card"><div class="lbl" id="l-pgrid">Netz</div><div class="val" id="v-pgrid">&#8212;</div></div>
     <div class="card"><div class="lbl">PV Produktion</div><div class="val" id="v-ppv">&#8212;</div></div>
     <div class="card"><div class="lbl">Hausverbrauch</div><div class="val" id="v-pload">&#8212;</div></div>
-    <div class="card"><div class="lbl">Batterie (+=entl&#228;dt)</div><div class="val" id="v-pakku">&#8212;</div></div>
+    <div class="card"><div class="lbl" id="l-pakku">Batterie</div><div class="val" id="v-pakku">&#8212;</div></div>
     <div class="card"><div class="lbl">Miner Power</div><div class="val" id="v-power">&#8212;</div></div>
   </div>
 </section>
@@ -408,13 +408,15 @@ async function fetchStatus(){
   try{
     const d=await(await fetch('/api/status',{cache:'no-store'})).json();
     const fw=v=>v!=null?Math.round(v)+' W':'—';
-    const fsw=v=>v!=null?(v>0?'+':'')+Math.round(v)+' W':'—';
+    const absw=v=>v!=null?Math.round(Math.abs(v))+' W':'—';
     document.getElementById('v-soc').textContent=d.soc!=null?d.soc.toFixed(1)+'%':'—';
     document.getElementById('v-verfuegbar').textContent=fw(d.verfuegbar_w);
-    document.getElementById('v-pgrid').textContent=fw(d.p_grid);
+    document.getElementById('l-pgrid').textContent=d.p_grid==null?'Netz':(d.p_grid<0?'Netz Einspeisung':(d.p_grid>0?'Netz Bezug':'Netz'));
+    document.getElementById('v-pgrid').textContent=absw(d.p_grid);
     document.getElementById('v-ppv').textContent=fw(d.p_pv);
     document.getElementById('v-pload').textContent=d.p_load!=null?Math.round(Math.abs(d.p_load))+' W':'—';
-    document.getElementById('v-pakku').textContent=fsw(d.p_akku);
+    document.getElementById('l-pakku').textContent=d.p_akku==null?'Batterie':(d.p_akku>0?'Batterie entlädt':(d.p_akku<0?'Batterie lädt':'Batterie'));
+    document.getElementById('v-pakku').textContent=absw(d.p_akku);
     document.getElementById('v-power').textContent=fw(d.miner_power_w);
     const st=d.display_state||'unknown';
     const b=document.getElementById('badge');
