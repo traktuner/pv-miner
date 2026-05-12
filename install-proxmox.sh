@@ -4,11 +4,11 @@
 # Run on any Proxmox PVE host as root. Everything is auto-detected by default.
 #
 # Quick start:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/main/install-proxmox.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/master/install-proxmox.sh)
 #
 # Customise via env vars:
 #   CT_HOSTNAME=pv-miner IP=192.168.1.60/24 GATEWAY=192.168.1.1 \
-#     bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/main/install-proxmox.sh)
+#     bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/master/install-proxmox.sh)
 #
 
 set -euo pipefail
@@ -31,7 +31,7 @@ UNPRIVILEGED=${UNPRIVILEGED:-1}
 WEB_PORT=${WEB_PORT:-8080}
 
 REPO=${REPO:-traktuner/pv-miner}
-BRANCH=${BRANCH:-main}
+BRANCH=${BRANCH:-master}
 RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 
 # ── Sanity ────────────────────────────────────────────────────────────────────

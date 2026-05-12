@@ -9,7 +9,7 @@ Power target is set continuously via the Braiins OS REST API. A built-in web UI 
 Run on the **Proxmox PVE host shell** (not inside a VM):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/main/install-proxmox.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/master/install-proxmox.sh)
 ```
 
 That's it. The script:
@@ -87,7 +87,7 @@ GATEWAY=192.168.1.1 \
 RAM_MB=128 \
 DISK_GB=1 \
 STORAGE=local-zfs \
-  bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/main/install-proxmox.sh)
+  bash <(curl -fsSL https://raw.githubusercontent.com/traktuner/pv-miner/master/install-proxmox.sh)
 ```
 
 | Variable | Default | Notes |
@@ -103,7 +103,7 @@ STORAGE=local-zfs \
 | `GATEWAY` | — | required if `IP` is static |
 | `WEB_PORT` | `8080` | |
 | `REPO` | `traktuner/pv-miner` | override to test a fork |
-| `BRANCH` | `main` | override to test a branch |
+| `BRANCH` | `master` | override to test a branch |
 
 ## Common operations
 
