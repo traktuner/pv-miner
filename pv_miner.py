@@ -906,6 +906,17 @@ class PowerController:
         self._log.debug("Fronius: p_grid=%.0fW p_pv=%.0fW p_akku=%.0fW p_load=%.0fW soc=%.1f%%",
                         pf["p_grid"], pf["p_pv"], pf["p_akku"], pf.get("p_load", 0), soc)
 
+        if not cfg.get("miner", {}).get("host"):
+            self._state.update(
+                soc=soc, p_grid=pf["p_grid"], p_pv=pf["p_pv"],
+                p_akku=pf["p_akku"], p_load=pf.get("p_load"),
+                verfuegbar_w=None, miner_power_w=None,
+                display_state="unknown",
+                manual_override=cfg.get("modes", {}).get("manual_override", "auto"),
+            )
+            self._log.info("[cycle] Fronius OK, Antminer IP noch nicht konfiguriert")
+            return
+
         desired_a, desired_t, verfuegbar = self._decide(pf, cfg)
         action, target                   = self._hysterese(desired_a, desired_t, cfg)
         display                          = self._display(action, target, cfg)
@@ -1016,8 +1027,8 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"error": "Invalid JSON"}), 400
-        if not data.get("fronius", {}).get("host") or not data.get("miner", {}).get("host"):
-            return jsonify({"error": "fronius.host und miner.host dürfen nicht leer sein"}), 400
+        if not data.get("fronius", {}).get("host"):
+            return jsonify({"error": "Fronius GEN24 Plus — IP darf nicht leer sein"}), 400
         if data.get("miner", {}).get("api_key", "").startswith("••"):
             data.setdefault("miner", {})["api_key"] = cfg_manager.get()["miner"].get("api_key", "")
         error = validate_config_patch(data)
