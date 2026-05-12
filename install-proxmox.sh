@@ -186,7 +186,7 @@ URL="${RAW}/pv_miner.py"
 NEW=/opt/pv-miner/pv_miner.py.new
 BIN=/opt/pv-miner/pv_miner.py
 echo "→ Fetching \$URL"
-wget -qO "\$NEW" "\$URL"
+wget --header='Cache-Control: no-cache' -qO "\$NEW" "\$URL?_=\$(date +%s)"
 python3 -c "import ast; ast.parse(open('\$NEW').read())" || {
   echo "✗ Downloaded file is not valid Python"; rm -f "\$NEW"; exit 1
 }

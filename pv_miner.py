@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 
 from flask import Flask, Response, jsonify, request
 import requests as _http
@@ -1047,9 +1047,20 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _cache_busted_url(url: str) -> str:
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query["_"] = str(int(time.time()))
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
 def update_available() -> tuple[bool, str]:
     try:
-        r = _http.get(UPDATE_URL, timeout=15)
+        r = _http.get(
+            _cache_busted_url(UPDATE_URL),
+            headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
+            timeout=15,
+        )
         r.raise_for_status()
         remote_hash = _sha256_bytes(r.content)
         local_hash = _sha256_file(Path(__file__))
