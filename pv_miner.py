@@ -33,11 +33,15 @@ DEFAULT_CONFIG: dict = {
         "soc_minimum":      15,
         "soc_hysterese":    5,
         "soc_freigabe":     95,
+        "soc_start_mining": 0,       # 0 = immer erlaubt; z.B. 100 = erst wenn Akku voll
         "netz_puffer_watt": 200,
         "hysterese_watt":   300,
         "hysterese_zyklen": 2,
     },
     "modes": {
+        # "grid"           — nur minen wenn P_Grid negativ (Einspeisung); Akku lädt zuerst
+        # "pv_and_battery" — minen sobald PV > Hausverbrauch; Akku + Miner teilen Überschuss
+        "surplus_source":     "grid",
         # "pause" | "minimum_power"
         "low_surplus_action": "pause",
         "soc_low_action":     "pause",
@@ -110,9 +114,10 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
   <h2>Status <span id="ts" class="ts"></span></h2>
   <div class="cards">
     <div class="card"><div class="lbl">Batterie SOC</div><div class="val" id="v-soc">&#8212;</div></div>
-    <div class="card"><div class="lbl">PV &#220;berschuss</div><div class="val" id="v-surplus">&#8212;</div></div>
+    <div class="card"><div class="lbl">Verf&#252;gbar (f. Miner)</div><div class="val" id="v-verfuegbar">&#8212;</div></div>
     <div class="card"><div class="lbl">P_Grid</div><div class="val" id="v-pgrid">&#8212;</div></div>
     <div class="card"><div class="lbl">P_PV</div><div class="val" id="v-ppv">&#8212;</div></div>
+    <div class="card"><div class="lbl">Hausverbrauch</div><div class="val" id="v-pload">&#8212;</div></div>
     <div class="card"><div class="lbl">Batterie</div><div class="val" id="v-pakku">&#8212;</div></div>
     <div class="card"><div class="lbl">Miner Power</div><div class="val" id="v-power">&#8212;</div></div>
   </div>
@@ -155,7 +160,8 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
       <div class="fg">
         <div class="field"><label>SOC Minimum (%)</label><input id="f-sm" type="number" min="0" max="100"></div>
         <div class="field"><label>SOC Hysterese (%)</label><input id="f-sh" type="number" min="0" max="30"></div>
-        <div class="field"><label>SOC Freigabe (%)</label><input id="f-sf" type="number" min="0" max="100"></div>
+        <div class="field"><label>SOC Freigabe — volle Power (%)</label><input id="f-sf" type="number" min="0" max="100"></div>
+        <div class="field"><label>SOC Mining erlaubt ab (%, 0=immer)</label><input id="f-sstart" type="number" min="0" max="100" title="0 = immer minen wenn Überschuss da. Z.B. 100 = erst minen wenn Akku voll."></div>
         <div class="field"><label>Netz-Puffer (W)</label><input id="f-np" type="number" min="0" max="2000"></div>
         <div class="field"><label>Hysterese Delta (W)</label><input id="f-hw" type="number" min="0" max="1000"></div>
         <div class="field"><label>Hysterese Zyklen</label><input id="f-hz" type="number" min="1" max="10"></div>
@@ -165,6 +171,13 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
     <div class="fsec">
       <h3>Braiins OS Betriebsmodi</h3>
       <div class="fg">
+        <div class="field">
+          <label>&#220;berschuss-Quelle</label>
+          <select id="f-ss">
+            <option value="grid">Nur Netz-Einspeisung (Akku l&#228;dt zuerst)</option>
+            <option value="pv_and_battery">PV &#8722; Hausverbrauch (Miner + Akku teilen Überschuss)</option>
+          </select>
+        </div>
         <div class="field">
           <label>Bei wenig PV-&#220;berschuss</label>
           <select id="f-ls">
@@ -204,9 +217,10 @@ async function fetchStatus(){
     const d=await(await fetch('/api/status')).json();
     const fw=v=>v!=null?Math.round(v)+' W':'&#8212;';
     document.getElementById('v-soc').textContent=d.soc!=null?d.soc.toFixed(1)+'%':'&#8212;';
-    document.getElementById('v-surplus').innerHTML=fw(d.surplus_w);
+    document.getElementById('v-verfuegbar').innerHTML=fw(d.verfuegbar_w);
     document.getElementById('v-pgrid').innerHTML=fw(d.p_grid);
     document.getElementById('v-ppv').innerHTML=fw(d.p_pv);
+    document.getElementById('v-pload').innerHTML=d.p_load!=null?Math.round(Math.abs(d.p_load))+' W':'&#8212;';
     document.getElementById('v-pakku').innerHTML=fw(d.p_akku);
     document.getElementById('v-power').innerHTML=fw(d.miner_power_w);
     const st=d.display_state||'unknown';
@@ -232,9 +246,11 @@ async function fetchCfg(){
     document.getElementById('f-sm').value=d.control?.soc_minimum??15;
     document.getElementById('f-sh').value=d.control?.soc_hysterese??5;
     document.getElementById('f-sf').value=d.control?.soc_freigabe??95;
+    document.getElementById('f-sstart').value=d.control?.soc_start_mining??0;
     document.getElementById('f-np').value=d.control?.netz_puffer_watt??200;
     document.getElementById('f-hw').value=d.control?.hysterese_watt??300;
     document.getElementById('f-hz').value=d.control?.hysterese_zyklen??2;
+    document.getElementById('f-ss').value=d.modes?.surplus_source||'grid';
     document.getElementById('f-ls').value=d.modes?.low_surplus_action||'pause';
     document.getElementById('f-sl').value=d.modes?.soc_low_action||'pause';
   }catch(e){}
@@ -244,8 +260,8 @@ async function saveCfg(){
   const cfg={
     fronius:{host:document.getElementById('f-fh').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
     miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim(),min_power_watt:+document.getElementById('f-mn').value,max_power_watt:+document.getElementById('f-mx').value},
-    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,netz_puffer_watt:+document.getElementById('f-np').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
-    modes:{low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value}
+    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
+    modes:{surplus_source:document.getElementById('f-ss').value,low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value}
   };
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
@@ -370,6 +386,7 @@ class FroniusAPI:
                 "p_grid": float(site.get("P_Grid") or 0.0),
                 "p_pv":   float(site.get("P_PV")   or 0.0),
                 "p_akku": float(site.get("P_Akku")  or 0.0),
+                "p_load": float(site.get("P_Load")  or 0.0),
                 "soc":    soc,
             }
         except Exception as exc:
@@ -455,7 +472,7 @@ class StateStore:
         self._lock = threading.Lock()
         self._d: dict = {
             "soc": None, "p_grid": None, "p_pv": None, "p_akku": None,
-            "surplus_w": None, "miner_power_w": None,
+            "p_load": None, "verfuegbar_w": None, "miner_power_w": None,
             "display_state": "unknown", "manual_override": "auto",
         }
 
@@ -490,41 +507,62 @@ class PowerController:
         self._fronius_err = 0
         self._braiins_err = 0
 
-    def _decide(self, pf: dict, cfg: dict) -> tuple[str, int]:
+    def _decide(self, pf: dict, cfg: dict) -> tuple[str, int, float]:
+        """Return (action, target_watt, verfuegbar_w)."""
         modes    = cfg.get("modes", {})
         ctrl     = cfg["control"]
         miner    = cfg["miner"]
         override = modes.get("manual_override", "auto")
         low_act  = modes.get("low_surplus_action", "pause")
         soc_act  = modes.get("soc_low_action",     "pause")
+        surplus_source = modes.get("surplus_source", "grid")
         min_w    = miner["min_power_watt"]
         max_w    = miner["max_power_watt"]
 
-        if override == "pause":   return ("pause", 0)
-        if override == "minimum": return ("mine",  min_w)
-        if override == "maximum": return ("mine",  max_w)
+        if override == "pause":   return ("pause", 0, 0.0)
+        if override == "minimum": return ("mine",  min_w, float(min_w))
+        if override == "maximum": return ("mine",  max_w, float(max_w))
 
         soc        = pf["soc"]
-        ueberschuss = abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0
-        soc_resume  = ctrl["soc_minimum"] + ctrl["soc_hysterese"]
+        soc_resume = ctrl["soc_minimum"] + ctrl["soc_hysterese"]
 
+        # ── SOC protection (absolute minimum) ───────────────────────────────
         if self._soc_blocked:
             if soc < soc_resume:
-                return ("mine", min_w) if soc_act == "minimum_power" else ("pause", 0)
+                return ("mine", min_w, 0.0) if soc_act == "minimum_power" else ("pause", 0, 0.0)
             self._soc_blocked = False
 
         if soc < ctrl["soc_minimum"]:
             self._soc_blocked = True
-            return ("mine", min_w) if soc_act == "minimum_power" else ("pause", 0)
+            return ("mine", min_w, 0.0) if soc_act == "minimum_power" else ("pause", 0, 0.0)
 
+        # ── SOC start threshold (Case 2: "erst minen wenn Akku voll") ───────
+        soc_start = ctrl.get("soc_start_mining", 0)
+        if soc_start > 0 and soc < soc_start:
+            return ("mine", min_w, 0.0) if low_act == "minimum_power" else ("pause", 0, 0.0)
+
+        # ── SOC freigabe: Akku voll → volle Power ───────────────────────────
         if soc >= ctrl["soc_freigabe"]:
-            return ("mine", max_w)
+            return ("mine", max_w, float(max_w))
 
-        verfuegbar = ueberschuss - ctrl["netz_puffer_watt"]
+        # ── Verfügbare Leistung berechnen ────────────────────────────────────
+        puffer = ctrl["netz_puffer_watt"]
+
+        if surplus_source == "pv_and_battery":
+            # Case 1: PV − Hausverbrauch − Puffer + aktueller Miner-Zug
+            # = was der Miner haben kann ohne Netzbezug zu erzeugen
+            # (abs(p_load) enthält den Miner bereits → aufaddieren für Netto-Hausverbrauch)
+            p_load_house = abs(pf.get("p_load", 0.0)) - self._cur_target
+            verfuegbar = pf["p_pv"] - p_load_house - puffer
+        else:
+            # Default: nur Netz-Einspeisung (Akku lädt zuerst)
+            verfuegbar = (abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0) - puffer
+
         if verfuegbar < min_w:
-            return ("mine", min_w) if low_act == "minimum_power" else ("pause", 0)
+            return ("mine", min_w, verfuegbar) if low_act == "minimum_power" else ("pause", 0, verfuegbar)
 
-        return ("mine", max(min_w, min(int(verfuegbar), max_w)))
+        target = max(min_w, min(int(verfuegbar), max_w))
+        return ("mine", target, verfuegbar)
 
     def _hysterese(self, action: str, target: int, cfg: dict) -> tuple[str, int]:
         hyst_w  = cfg["control"]["hysterese_watt"]
@@ -598,20 +636,20 @@ class PowerController:
             return
 
         self._fronius_err = 0
-        soc        = pf["soc"]
-        ueberschuss = abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0
+        soc = pf["soc"]
 
-        self._log.debug("Fronius: p_grid=%.0fW p_pv=%.0fW p_akku=%.0fW soc=%.1f%%",
-                        pf["p_grid"], pf["p_pv"], pf["p_akku"], soc)
+        self._log.debug("Fronius: p_grid=%.0fW p_pv=%.0fW p_akku=%.0fW p_load=%.0fW soc=%.1f%%",
+                        pf["p_grid"], pf["p_pv"], pf["p_akku"], pf.get("p_load", 0), soc)
 
-        desired_a, desired_t = self._decide(pf, cfg)
-        action, target       = self._hysterese(desired_a, desired_t, cfg)
-        display              = self._display(action, target, cfg)
+        desired_a, desired_t, verfuegbar = self._decide(pf, cfg)
+        action, target                   = self._hysterese(desired_a, desired_t, cfg)
+        display                          = self._display(action, target, cfg)
 
         miner_st = self._braiins.get_status()
         self._state.update(
-            soc=soc, p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"],
-            surplus_w=ueberschuss,
+            soc=soc, p_grid=pf["p_grid"], p_pv=pf["p_pv"],
+            p_akku=pf["p_akku"], p_load=pf.get("p_load"),
+            verfuegbar_w=max(0.0, verfuegbar),
             miner_power_w=miner_st["power_watt"] if miner_st else None,
             display_state=display,
             manual_override=cfg.get("modes", {}).get("manual_override", "auto"),
@@ -620,18 +658,18 @@ class PowerController:
         no_change = (action == self._cur_action and
                      (action == "pause" or target == self._cur_target))
         if no_change:
-            self._log.info("[cycle] SOC=%.0f%% surplus=%.0fW → keine Änderung",
-                           soc, ueberschuss)
+            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → keine Änderung",
+                           soc, verfuegbar)
             return
 
         if action == "pause":
-            self._log.info("[cycle] SOC=%.0f%% surplus=%.0fW → PAUSE", soc, ueberschuss)
+            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → PAUSE", soc, verfuegbar)
         elif display == "minimum":
-            self._log.info("[cycle] SOC=%.0f%% surplus=%.0fW → MINIMAL %dW", soc, ueberschuss, target)
+            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → MINIMAL %dW", soc, verfuegbar, target)
         elif display == "maximum":
             self._log.info("[cycle] SOC=%.0f%% → MAX_POWER %dW (SOC Freigabe)", soc, target)
         else:
-            self._log.info("[cycle] SOC=%.0f%% surplus=%.0fW → target=%dW", soc, ueberschuss, target)
+            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → target=%dW", soc, verfuegbar, target)
 
         self._apply(action, target)
 
