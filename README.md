@@ -2,7 +2,7 @@
 
 Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV surplus and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
 
-**pv-miner only switches the miner on and off.** It never changes the power target, hashrate target, autotuning or fan settings — whatever you configured in Braiins OS stays exactly as it is. The miner regulates its own consumption; pv-miner just decides *when* it's allowed to run. Control happens via the Braiins OS GraphQL API. A built-in web UI handles all configuration and provides live status.
+**pv-miner only pauses and resumes the miner.** It never changes the power target, hashrate target, autotuning or fan settings — whatever you configured in Braiins OS stays exactly as it is. The miner regulates its own consumption; pv-miner just decides *when* it's allowed to run. Control happens via the Braiins OS Public API. A built-in web UI handles all configuration and provides live status.
 
 ## One-line install
 
@@ -67,7 +67,7 @@ Flapping is suppressed by start/stop hysteresis: a state change is only executed
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
-- Braiins OS: GraphQL API at `/graphql`. pv-miner logs in as `root` (`mutation auth { login }`), which sets a `session_id` cookie (1 h TTL, auto-refreshed). It uses only `bosminer { start }` / `bosminer { stop }` and reads `bosminer { info { summary { power } } }`. The power target and tuning are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, 1 h TTL, auto-refreshed). It uses only `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, and reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle) and `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`). The power target, tuning and fans are never written.
 
 ## Override buttons
 

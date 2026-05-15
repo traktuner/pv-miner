@@ -571,153 +571,164 @@ class FroniusAPI:
 
 
 # ---------------------------------------------------------------------------
-# Braiins OS API  (GraphQL — session-cookie auth)
+# Braiins OS API  (Public REST API — token auth)
 # ---------------------------------------------------------------------------
 
 class BraiinsAPI:
-    """Communicates with Braiins OS via its GraphQL endpoint.
+    """Braiins OS Public API client (REST, ``/api/v1``).
 
-    Auth flow
-    ---------
-    POST /graphql  mutation { auth { login(username:"root", password:"...") } }
-    → Braiins sets a session_id cookie (TTL 3600 s).
-    All subsequent requests carry that cookie automatically via requests.Session.
-    The session is refreshed proactively before expiry, and on any auth error.
+    Auth
+    ----
+    ``POST /api/v1/auth/login`` with ``{"username","password"}`` returns
+    ``{"token", "timeout_s"}``. The token is sent in the ``authorization``
+    header **without** a "Bearer" prefix. It is refreshed before expiry and
+    on any 401.
 
-    The ``api_key`` config field is used as the password for the root account.
+    The ``api_key`` config field holds the password of the ``root`` account.
     Leave it empty if no password is set (factory default).
+
+    Scope
+    -----
+    pv-miner uses ONLY pause / resume. It never sets a power target, hashrate
+    target, autotuning or fan settings — the miner keeps whatever is configured
+    in Braiins OS itself.
+
+    Endpoints used:
+      PUT  /api/v1/actions/pause    — pause mining (miner status → 3)
+      PUT  /api/v1/actions/resume   — resume mining (miner status → 2)
+      GET  /api/v1/miner/details    — { "status": 1|2|3, ... }
+      GET  /api/v1/miner/stats      — power_stats.approximated_consumption.watt
+
+    Miner status values: 2 = mining, 3 = paused, 1 = idle (bosminer up,
+    not mining).
     """
 
-    _STOP_MUTATION  = ('mutation { bosminer { stop  { '
-                       '... on VoidResult { void } '
-                       '... on BosminerError { message } } } }')
-    _START_MUTATION = ('mutation { bosminer { start { '
-                       '... on VoidResult { void } '
-                       '... on BosminerError { message } } } }')
-    _STATUS_QUERY   = ('{ bosminer { info { summary { '
-                       'power { approxConsumptionW } } } } }')
+    _STATUS_MINING = 2
 
     def __init__(self, cfg: ConfigManager, timeout: int = 10):
         self._cfg     = cfg
         self._timeout = timeout
         self._log     = logging.getLogger("api")
-        self._session = _http.Session()
-        self._session_expiry: float = 0.0
+        self._token: str = ""
+        self._token_expiry: float = 0.0
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    def _host(self) -> str:
+    def _base(self) -> str:
         host = self._cfg.get()["miner"]["host"].strip()
         if not host:
             return ""
         if not host.startswith(("http://", "https://")):
             host = f"http://{host}"
         parsed = urlparse(host)
-        return f"{parsed.scheme or 'http'}://{parsed.netloc or parsed.path}"
+        return f"{parsed.scheme or 'http'}://{parsed.netloc or parsed.path}/api/v1"
 
     def _login(self) -> bool:
-        host = self._host()
-        if not host:
+        base = self._base()
+        if not base:
             return False
-        password = json.dumps(self._cfg.get()["miner"].get("api_key", "") or "")
-        query = (
-            f'mutation {{ auth {{ login(username: "root", password: {password}) '
-            f'{{ ... on VoidResult {{ void }} ... on AuthError {{ message }} }} }} }}'
-        )
+        password = self._cfg.get()["miner"].get("api_key", "") or ""
         try:
-            r = self._session.post(f"{host}/graphql",
-                                   json={"query": query}, timeout=self._timeout)
+            r = _http.post(f"{base}/auth/login",
+                           json={"username": "root", "password": password},
+                           timeout=self._timeout)
             r.raise_for_status()
             d = r.json()
-            if (d.get("data") or {}).get("auth", {}).get("login", {}).get("void") == "void":
-                self._session_expiry = time.time() + 3500   # refresh 100 s before expiry
-                self._log.info("Braiins login OK")
-                return True
-            self._log.warning("Braiins login failed: %s", d)
-            return False
+            self._token = d["token"]
+            ttl = int(d.get("timeout_s", 3600))
+            self._token_expiry = time.time() + max(60, ttl - 100)
+            self._log.info("Braiins login OK")
+            return True
         except Exception as exc:
-            self._log.warning("Braiins login error: %s", exc)
+            self._log.warning("Braiins login failed: %s", exc)
+            self._token = ""
+            self._token_expiry = 0.0
             return False
 
-    def _gql(self, query: str) -> dict | None:
-        host = self._host()
-        if not host:
+    def _request(self, method: str, path: str, _retry: bool = True):
+        """Authenticated request. Returns the Response or None on failure."""
+        base = self._base()
+        if not base:
             return None
-        # Ensure we have a valid session
-        if time.time() >= self._session_expiry:
+        if not self._token or time.time() >= self._token_expiry:
             if not self._login():
                 return None
         try:
-            r = self._session.post(f"{host}/graphql",
-                                   json={"query": query}, timeout=self._timeout)
-            r.raise_for_status()
-            d = r.json()
-            # Re-login on auth errors and retry once
-            errors = d.get("errors") or []
-            if errors and any("credentials" in str(e).lower() or "authentication" in str(e).lower()
-                              for e in errors):
-                self._log.info("Braiins session expired — re-logging in")
-                self._session_expiry = 0
+            r = _http.request(method, f"{base}{path}",
+                              headers={"authorization": self._token},
+                              timeout=self._timeout)
+            if r.status_code == 401 and _retry:
+                self._log.info("Braiins token expired — re-logging in")
+                self._token_expiry = 0.0
                 if not self._login():
                     return None
-                r = self._session.post(f"{host}/graphql",
-                                       json={"query": query}, timeout=self._timeout)
-                r.raise_for_status()
-                d = r.json()
-            return d
+                return self._request(method, path, _retry=False)
+            r.raise_for_status()
+            return r
         except Exception as exc:
-            self._log.warning("GraphQL: %s", exc)
+            self._log.warning("Braiins %s %s: %s", method, path, exc)
             return None
 
+    @staticmethod
+    def _ok(resp) -> bool:
+        """An action succeeded if it returned HTTP 2xx and no error body."""
+        if resp is None:
+            return False
+        try:
+            body = resp.json()
+        except Exception:
+            return True  # empty / non-JSON body on 2xx is fine
+        return not (isinstance(body, dict) and body.get("error"))
+
     # ── public API ────────────────────────────────────────────────────────────
-    #
-    # NOTE: pv-miner deliberately only starts/stops the miner. It never touches
-    # the power target, hashrate target, autotuning or fan settings — whatever
-    # is configured in Braiins OS itself stays exactly as it is.
 
     def pause(self) -> bool:
-        d = self._gql(self._STOP_MUTATION)
-        if d is None:
-            return False
-        ok = ((d.get("data") or {})
-              .get("bosminer", {}).get("stop", {}).get("void") == "void")
+        r = self._request("PUT", "/actions/pause")
+        ok = self._ok(r)
         if ok:
-            self._log.debug("pause (stop) OK")
+            self._log.debug("pause OK")
         else:
-            self._log.warning("pause: %s", d.get("errors") or d)
+            self._log.warning("pause failed: %s", r.text if r is not None else "no response")
         return ok
 
     def resume(self) -> bool:
-        d = self._gql(self._START_MUTATION)
-        if d is None:
-            return False
-        ok = ((d.get("data") or {})
-              .get("bosminer", {}).get("start", {}).get("void") == "void")
+        r = self._request("PUT", "/actions/resume")
+        ok = self._ok(r)
         if ok:
-            self._log.debug("resume (start) OK")
+            self._log.debug("resume OK")
         else:
-            self._log.warning("resume: %s", d.get("errors") or d)
+            self._log.warning("resume failed: %s", r.text if r is not None else "no response")
         return ok
 
     def get_status(self) -> dict | None:
         """Return {power_watt, paused} or None if the miner is unreachable.
 
-        ``paused`` reflects whether the bosminer service is stopped — when it
-        is, the summary query fails with an UNAVAILABLE error. When it runs,
-        data is returned (``power_watt`` may briefly be 0 during ramp-up).
+        ``paused`` is True whenever the miner is not actively mining
+        (status != 2). ``power_watt`` is the real draw while mining, 0 while
+        paused (the stale post-pause reading would otherwise distort the
+        surplus calculation).
         """
-        d = self._gql(self._STATUS_QUERY)
-        if d is None:
+        rd = self._request("GET", "/miner/details")
+        if rd is None:
             return None
-        # Bosminer stopped → "Service unavailable" with UNAVAILABLE code
-        errors = d.get("errors") or []
-        if any((e.get("extensions") or {}).get("code") == "UNAVAILABLE" for e in errors):
+        try:
+            status = rd.json().get("status")
+        except Exception as exc:
+            self._log.warning("Braiins miner/details parse: %s", exc)
+            return None
+
+        if status != self._STATUS_MINING:
             return {"power_watt": 0, "paused": True}
-        power = ((d.get("data") or {})
-                 .get("bosminer", {}).get("info", {})
-                 .get("summary", {}).get("power") or {})
-        w = int(power.get("approxConsumptionW") or 0)
-        return {"power_watt": w, "paused": False}
+
+        watt = 0
+        rs = self._request("GET", "/miner/stats")
+        if rs is not None:
+            try:
+                ps = rs.json().get("power_stats") or {}
+                watt = int((ps.get("approximated_consumption") or {}).get("watt") or 0)
+            except Exception:
+                watt = 0
+        return {"power_watt": watt, "paused": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1184,8 +1195,9 @@ def main() -> None:
             except Exception as exc:
                 log.exception("run_cycle error: %s", exc)
             shutdown.wait(timeout=cfg_manager.get()["fronius"].get("poll_interval_seconds", 30))
-        log.info("Pausing miner before exit")
-        braiins.pause()
+        # Leave the miner exactly as it is on shutdown — a service restart or
+        # update must not disturb mining. The miner keeps its own state.
+        log.info("Control loop stopped — miner left untouched")
 
     threading.Thread(target=_loop, daemon=True, name="control").start()
 
