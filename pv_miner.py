@@ -633,84 +633,162 @@ class FroniusAPI:
 
 
 # ---------------------------------------------------------------------------
-# Braiins OS API
+# Braiins OS API  (GraphQL — session-cookie auth)
 # ---------------------------------------------------------------------------
 
 class BraiinsAPI:
+    """Communicates with Braiins OS via its GraphQL endpoint.
+
+    Auth flow
+    ---------
+    POST /graphql  mutation { auth { login(username:"root", password:"...") } }
+    → Braiins sets a session_id cookie (TTL 3600 s).
+    All subsequent requests carry that cookie automatically via requests.Session.
+    The session is refreshed proactively before expiry, and on any auth error.
+
+    The ``api_key`` config field is used as the password for the root account.
+    Leave it empty if no password is set (factory default).
+    """
+
+    _STOP_MUTATION  = ('mutation { bosminer { stop  { '
+                       '... on VoidResult { void } '
+                       '... on BosminerError { message } } } }')
+    _START_MUTATION = ('mutation { bosminer { start { '
+                       '... on VoidResult { void } '
+                       '... on BosminerError { message } } } }')
+    _STATUS_QUERY   = ('{ bosminer { info { summary { '
+                       'power { approxConsumptionW } } } } }')
+
     def __init__(self, cfg: ConfigManager, timeout: int = 10):
         self._cfg     = cfg
         self._timeout = timeout
+        self._log     = logging.getLogger("api")
+        self._session = _http.Session()
+        self._session_expiry: float = 0.0
 
-    def _base(self) -> str:
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _host(self) -> str:
         host = self._cfg.get()["miner"]["host"].strip()
         if not host:
             return ""
         if not host.startswith(("http://", "https://")):
             host = f"http://{host}"
         parsed = urlparse(host)
-        netloc = parsed.netloc or parsed.path
-        scheme = parsed.scheme or "http"
-        return f"{scheme}://{netloc}/api/v1"
+        return f"{parsed.scheme or 'http'}://{parsed.netloc or parsed.path}"
 
-    def _hdrs(self) -> dict:
-        h = {"Content-Type": "application/json"}
-        key = self._cfg.get()["miner"].get("api_key", "")
-        if key:
-            h["Authorization"] = f"Bearer {key}"
-        return h
+    def _login(self) -> bool:
+        host = self._host()
+        if not host:
+            return False
+        password = json.dumps(self._cfg.get()["miner"].get("api_key", "") or "")
+        query = (
+            f'mutation {{ auth {{ login(username: "root", password: {password}) '
+            f'{{ ... on VoidResult {{ void }} ... on AuthError {{ message }} }} }} }}'
+        )
+        try:
+            r = self._session.post(f"{host}/graphql",
+                                   json={"query": query}, timeout=self._timeout)
+            r.raise_for_status()
+            d = r.json()
+            if (d.get("data") or {}).get("auth", {}).get("login", {}).get("void") == "void":
+                self._session_expiry = time.time() + 3500   # refresh 100 s before expiry
+                self._log.info("Braiins login OK")
+                return True
+            self._log.warning("Braiins login failed: %s", d)
+            return False
+        except Exception as exc:
+            self._log.warning("Braiins login error: %s", exc)
+            return False
+
+    def _gql(self, query: str) -> dict | None:
+        host = self._host()
+        if not host:
+            return None
+        # Ensure we have a valid session
+        if time.time() >= self._session_expiry:
+            if not self._login():
+                return None
+        try:
+            r = self._session.post(f"{host}/graphql",
+                                   json={"query": query}, timeout=self._timeout)
+            r.raise_for_status()
+            d = r.json()
+            # Re-login on auth errors and retry once
+            errors = d.get("errors") or []
+            if errors and any("credentials" in str(e).lower() or "authentication" in str(e).lower()
+                              for e in errors):
+                self._log.info("Braiins session expired — re-logging in")
+                self._session_expiry = 0
+                if not self._login():
+                    return None
+                r = self._session.post(f"{host}/graphql",
+                                       json={"query": query}, timeout=self._timeout)
+                r.raise_for_status()
+                d = r.json()
+            return d
+        except Exception as exc:
+            self._log.warning("GraphQL: %s", exc)
+            return None
+
+    # ── public API ────────────────────────────────────────────────────────────
 
     def set_power_target(self, watt: int) -> bool:
-        try:
-            _http.put(
-                f"{self._base()}/performance/power-target",
-                json={"watt": watt},
-                headers=self._hdrs(), timeout=self._timeout,
-            ).raise_for_status()
-            logging.getLogger("api").debug("set_power_target(%dW) OK", watt)
-            return True
-        except Exception as exc:
-            logging.getLogger("api").warning("set_power_target: %s", exc)
+        query = (
+            f'mutation {{ bosminer {{ config {{ '
+            f'updateAutotuning(input: {{ powerTarget: {watt} }}, apply: true) '
+            f'{{ ... on AutotuningOut {{ autotuning {{ powerTarget }} }} '
+            f'... on AutotuningError {{ message }} '
+            f'... on AttributeError {{ message }} }} }} }} }}'
+        )
+        d = self._gql(query)
+        if d is None:
             return False
+        out = ((d.get("data") or {})
+               .get("bosminer", {}).get("config", {}).get("updateAutotuning", {}))
+        if (out.get("autotuning") or {}).get("powerTarget") is not None:
+            self._log.debug("set_power_target(%dW) OK", watt)
+            return True
+        self._log.warning("set_power_target(%dW): %s", watt, d.get("errors") or out)
+        return False
 
     def pause(self) -> bool:
-        try:
-            _http.put(f"{self._base()}/actions/pause",
-                      headers=self._hdrs(), timeout=self._timeout).raise_for_status()
-            logging.getLogger("api").debug("pause OK")
-            return True
-        except Exception as exc:
-            logging.getLogger("api").warning("pause: %s", exc)
+        d = self._gql(self._STOP_MUTATION)
+        if d is None:
             return False
+        ok = ((d.get("data") or {})
+              .get("bosminer", {}).get("stop", {}).get("void") == "void")
+        if ok:
+            self._log.debug("pause (stop) OK")
+        else:
+            self._log.warning("pause: %s", d.get("errors") or d)
+        return ok
 
     def resume(self) -> bool:
-        try:
-            _http.put(f"{self._base()}/actions/resume",
-                      headers=self._hdrs(), timeout=self._timeout).raise_for_status()
-            logging.getLogger("api").debug("resume OK")
-            return True
-        except Exception as exc:
-            logging.getLogger("api").warning("resume: %s", exc)
+        d = self._gql(self._START_MUTATION)
+        if d is None:
             return False
+        ok = ((d.get("data") or {})
+              .get("bosminer", {}).get("start", {}).get("void") == "void")
+        if ok:
+            self._log.debug("resume (start) OK")
+        else:
+            self._log.warning("resume: %s", d.get("errors") or d)
+        return ok
 
     def get_status(self) -> dict | None:
-        try:
-            r = _http.get(f"{self._base()}/miner/stats",
-                          headers=self._hdrs(), timeout=self._timeout)
-            r.raise_for_status()
-            d  = r.json()
-            ps = d.get("power_stats", {}) or {}
-            ms = d.get("miner_stats", {}) or {}
-            real = ms.get("real_hashrate", {}) or {}
-            last_hashrate = real.get("last_5s") or real.get("last_15s") or {}
-            power = (ps.get("approximated_consumption") or {}).get("watt", 0)
-            return {
-                "power_watt":   int(power or 0),
-                "paused":       False,
-                "hashrate_ths": float(last_hashrate.get("gigahash_per_second", 0.0)) / 1000.0,
-            }
-        except Exception as exc:
-            logging.getLogger("api").warning("get_status: %s", exc)
+        d = self._gql(self._STATUS_QUERY)
+        if d is None:
             return None
+        # Bosminer stopped → "Service unavailable" with UNAVAILABLE code
+        errors = d.get("errors") or []
+        if any((e.get("extensions") or {}).get("code") == "UNAVAILABLE" for e in errors):
+            return {"power_watt": 0, "paused": True, "hashrate_ths": 0.0}
+        power = ((d.get("data") or {})
+                 .get("bosminer", {}).get("info", {})
+                 .get("summary", {}).get("power") or {})
+        w = int(power.get("approxConsumptionW") or 0)
+        return {"power_watt": w, "paused": w == 0, "hashrate_ths": 0.0}
 
 
 # ---------------------------------------------------------------------------
