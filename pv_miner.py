@@ -919,12 +919,32 @@ class PowerController:
             self._log.critical("Braiins: %d consecutive failures", self._braiins_err)
 
     def run_cycle(self) -> None:
-        cfg = self._cfg.get()
-        pf  = self._fronius.get_powerflow()
+        cfg      = self._cfg.get()
+        override = cfg.get("modes", {}).get("manual_override", "auto")
+        pf       = self._fronius.get_powerflow()
 
         if pf is None:
             self._fronius_err += 1
             self._log.warning("Fronius unreachable (streak: %d)", self._fronius_err)
+            # Manual override: apply immediately even without Fronius data
+            if override != "auto":
+                miner    = cfg["miner"]
+                min_w, max_w = miner["min_power_watt"], miner["max_power_watt"]
+                if override == "pause":
+                    self._apply("pause", 0)
+                elif override == "minimum":
+                    self._apply("mine", min_w)
+                elif override == "maximum":
+                    self._apply("mine", max_w)
+                self._state.update(
+                    manual_override=override,
+                    display_state=self._display(
+                        "pause" if override == "pause" else "mine",
+                        0 if override == "pause" else (min_w if override == "minimum" else max_w),
+                        cfg,
+                    ),
+                )
+                return
             if self._fronius_err >= 3 and self._cur_action != "pause":
                 self._log.warning("Fronius 3x unreachable → pausing miner (safety)")
                 self._apply("pause", 0)
@@ -948,7 +968,11 @@ class PowerController:
             return
 
         desired_a, desired_t, verfuegbar = self._decide(pf, cfg)
-        action, target                   = self._hysterese(desired_a, desired_t, cfg)
+        # Bypass hysteresis for manual overrides — apply immediately
+        if override != "auto":
+            action, target = desired_a, desired_t
+        else:
+            action, target = self._hysterese(desired_a, desired_t, cfg)
         display                          = self._display(action, target, cfg)
 
         miner_st = self._braiins.get_status()
