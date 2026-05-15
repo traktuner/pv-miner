@@ -1202,6 +1202,15 @@ def create_app(cfg_manager: ConfigManager, state: StateStore,
     app = Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+    @app.after_request
+    def _no_cache(resp):
+        # The whole UI is generated dynamically and changes on every update —
+        # never let the browser serve a stale copy of the page or the APIs.
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"]        = "no-cache"
+        resp.headers["Expires"]       = "0"
+        return resp
+
     @app.route("/")
     def index():
         return Response(HTML_PAGE, mimetype="text/html")
