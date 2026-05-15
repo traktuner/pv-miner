@@ -32,8 +32,10 @@ DEFAULT_CONFIG: dict = {
     "miner": {
         "host": "",
         "api_key": "",
-        "min_power_watt": 500,
-        "max_power_watt": 3400,
+        # Geschätzter Stromverbrauch des Miners WENN er läuft (für die Start-Entscheidung).
+        # pv-miner ändert NICHTS am Miner — kein Power-Target, kein Tuning, keine Fans.
+        # Es schaltet ausschließlich pause / start.
+        "miner_power_watt": 3000,
     },
     "control": {
         "soc_minimum":      15,
@@ -42,26 +44,20 @@ DEFAULT_CONFIG: dict = {
         "soc_start_mining": 0,       # 0 = immer erlaubt; z.B. 100 = erst wenn Akku voll
         "netz_puffer_watt": 200,
         "akku_entlade_sperre_watt": 100,
-        "hysterese_watt":   300,
         "hysterese_zyklen": 2,
     },
     "modes": {
         # "grid"           — nur minen wenn P_Grid negativ (Einspeisung); Akku lädt zuerst
         # "pv_and_battery" — minen sobald PV > Hausverbrauch; Akku + Miner teilen Überschuss
-        "surplus_source":     "grid",
-        # "pause" | "minimum_power"
-        "low_surplus_action": "pause",
-        "soc_low_action":     "pause",
-        # "auto" | "pause" | "minimum" | "maximum"
-        "manual_override":    "auto",
+        "surplus_source":  "grid",
+        # "auto" | "pause" | "run"
+        "manual_override": "auto",
     },
     "time_rule": {
         "enabled":       False,
         "start":         "18:00",
         "end":           "07:00",
         "soc_threshold": 50,
-        # "pause" | "minimum_power"
-        "action":        "pause",
     },
     "logging": {
         "level":        "INFO",
@@ -138,18 +134,18 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
     <div class="card"><div class="lbl">PV Produktion</div><div class="val" id="v-ppv">&#8212;</div></div>
     <div class="card"><div class="lbl">Hausverbrauch</div><div class="val" id="v-pload">&#8212;</div></div>
     <div class="card"><div class="lbl" id="l-pakku">Batterie</div><div class="val" id="v-pakku">&#8212;</div></div>
-    <div class="card"><div class="lbl">Miner Power</div><div class="val" id="v-power">&#8212;</div></div>
+    <div class="card"><div class="lbl">Miner Verbrauch</div><div class="val" id="v-power">&#8212;</div></div>
   </div>
 </section>
 
 <section>
   <h2>Override</h2>
   <div class="ov-row">
-    <button id="ov-auto"    onclick="setOv('auto')">Auto (PV-gesteuert)</button>
-    <button id="ov-pause"   onclick="setOv('pause')">Pause</button>
-    <button id="ov-minimum" onclick="setOv('minimum')">Minimalbetrieb (~500 W)</button>
-    <button id="ov-maximum" onclick="setOv('maximum')">Vollbetrieb (Max W)</button>
+    <button id="ov-auto"  onclick="setOv('auto')">Auto (PV-gesteuert)</button>
+    <button id="ov-pause" onclick="setOv('pause')">Pause erzwingen</button>
+    <button id="ov-run"   onclick="setOv('run')">Laufen lassen</button>
   </div>
+  <div class="hint" style="margin-top:8px">Auto folgt der PV-/SOC-Regelung. <em>Pause</em> und <em>Laufen lassen</em> &#252;berschreiben die Automatik bis du wieder auf Auto stellst. pv-miner schaltet nur ein/aus &#8212; Hashrate-Target, Tuning und L&#252;fter bleiben unangetastet.</div>
 </section>
 
 <section>
@@ -170,9 +166,9 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
           <div class="hint">IP-Adresse des Antminers mit Braiins OS.</div>
         </div>
         <div class="field">
-          <label>Braiins API Key (leer = kein Auth)</label>
-          <input id="f-ak" type="password" placeholder="optional">
-          <div class="hint">Unter Braiins OS &#8594; Settings &#8594; API Access generieren. Leer lassen wenn kein Auth konfiguriert.</div>
+          <label>Braiins OS Passwort (root)</label>
+          <input id="f-ak" type="password" placeholder="leer = kein Passwort">
+          <div class="hint">Passwort des <em>root</em>-Logins in Braiins OS. Leer lassen wenn kein Passwort gesetzt ist (Werkseinstellung).</div>
         </div>
         <div class="field">
           <label>Abfrage-Intervall (Sekunden)</label>
@@ -183,17 +179,12 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
     </div>
 
     <div class="fsec">
-      <h3>Leistungsgrenzen</h3>
+      <h3>Miner</h3>
       <div class="fg">
         <div class="field">
-          <label>Minimale Miner-Leistung (W)</label>
-          <input id="f-mn" type="number" min="100" max="2000" oninput="updateHints()">
-          <div class="hint" id="h-mn">Unter diesem Wert macht Mining keinen Sinn &#8212; der Miner wird stattdessen pausiert.</div>
-        </div>
-        <div class="field">
-          <label>Maximale Miner-Leistung (W)</label>
-          <input id="f-mx" type="number" min="500" max="4000" oninput="updateHints()">
-          <div class="hint" id="h-mx">Oberes Limit. Sollte etwas unter dem Hardware-Maximum laut Braiins Autotuning liegen.</div>
+          <label>Stromverbrauch wenn der Miner l&#228;uft (W)</label>
+          <input id="f-mp" type="number" min="500" max="10000" oninput="updateHints()">
+          <div class="hint" id="h-mp"></div>
         </div>
       </div>
     </div>
@@ -238,11 +229,6 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
           <div class="hint" id="h-abs">Wenn der Fronius meldet, dass der Akku deutlich entl&#228;dt, wird im Auto-Modus nicht gestartet.</div>
         </div>
         <div class="field">
-          <label>Mindest&#228;nderung Power-Target (W)</label>
-          <input id="f-hw" type="number" min="0" max="1000" oninput="updateHints()">
-          <div class="hint" id="h-hw">Kleine PV-Schwankungen werden ignoriert. Erst wenn die berechnete Leistung um mehr als diesen Wert abweicht wird der Miner nachgeregelt.</div>
-        </div>
-        <div class="field">
           <label>Hysterese-Zyklen (Start/Stopp)</label>
           <input id="f-hz" type="number" min="1" max="10" oninput="updateHints()">
           <div class="hint" id="h-hz">Start und Stopp werden erst ausgef&#252;hrt wenn die Bedingung so viele Messungen in Folge erf&#252;llt ist &#8212; verhindert Fehlentscheidungen durch kurze Wolken.</div>
@@ -260,22 +246,6 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
             <option value="pv_and_battery">PV-Produktion minus Hausverbrauch (Miner und Akku teilen gleichzeitig)</option>
           </select>
           <div class="hint" id="h-ss"></div>
-        </div>
-        <div class="field">
-          <label>Was soll passieren wenn kein ausreichender &#220;berschuss vorhanden ist?</label>
-          <select id="f-ls" onchange="updateHints()">
-            <option value="pause">Miner pausieren (komplett aus)</option>
-            <option value="minimum_power">Miner l&#228;uft weiter auf Minimalbetrieb</option>
-          </select>
-          <div class="hint" id="h-ls"></div>
-        </div>
-        <div class="field">
-          <label>Was soll passieren wenn der Akku unter die Schutzgrenze f&#228;llt?</label>
-          <select id="f-sl" onchange="updateHints()">
-            <option value="pause">Miner pausieren (Akku sch&#252;tzen)</option>
-            <option value="minimum_power">Miner l&#228;uft weiter auf Minimalbetrieb</option>
-          </select>
-          <div class="hint" id="h-sl"></div>
         </div>
       </div>
     </div>
@@ -302,17 +272,9 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
           <div class="hint">Ende des Zeitfensters. Ein Fenster &#252;ber Mitternacht ist erlaubt.</div>
         </div>
         <div class="field">
-          <label>Wenn SOC bei oder unter (%)</label>
+          <label>Miner pausieren wenn SOC bei oder unter (%)</label>
           <input id="f-tso" type="number" min="0" max="100" oninput="updateHints()">
           <div class="hint" id="h-tso"></div>
-        </div>
-        <div class="field">
-          <label>Dann</label>
-          <select id="f-ta" onchange="updateHints()">
-            <option value="pause">Miner pausieren</option>
-            <option value="minimum_power">Auf Minimalbetrieb reduzieren</option>
-          </select>
-          <div class="hint" id="h-ta"></div>
         </div>
       </div>
     </div>
@@ -345,62 +307,43 @@ function s(id){return document.getElementById(id)?.value||'';}
 
 function updateHints(){
   const sm=v('f-sm',15),sh=v('f-sh',5),sf=v('f-sf',95),ss2=v('f-sstart',0);
-  const np=v('f-np',200),absw=v('f-abs',100),hw=v('f-hw',300),hz=v('f-hz',2),pi=v('f-pi',30);
-  const mn=v('f-mn',500),mx=v('f-mx',3400);
-  const ss=s('f-ss'),ls=s('f-ls'),sl=s('f-sl');
-  const te=s('f-te')==='true',ts=s('f-ts')||'18:00',tend=s('f-tend')||'07:00',tso=v('f-tso',50),ta=s('f-ta');
+  const np=v('f-np',200),absw=v('f-abs',100),hz=v('f-hz',2),pi=v('f-pi',30);
+  const mp=v('f-mp',3000);
+  const ss=s('f-ss');
+  const te=s('f-te')==='true',ts=s('f-ts')||'18:00',tend=s('f-tend')||'07:00',tso=v('f-tso',50);
 
-  hint('h-pi',`Alle <em>${pi} Sekunden</em> wird der Wechselrichter abgefragt und der Miner bei Bedarf nachgeregelt.`);
-  hint('h-mn',`Unter <em>${mn} W</em> lohnt sich Mining nicht mehr &#8212; bei weniger Überschuss wird pausiert (oder Minimalbetrieb aktiviert, je nach Einstellung unten).`);
-  hint('h-mx',`Der Miner wird maximal auf <em>${mx} W</em> gesetzt. Diesen Wert aus dem Braiins OS Autotuning-Ergebnis ablesen.`);
-  hint('h-sm',`Fällt der Akku unter <em>${sm}%</em>, wird der Miner sofort gestoppt &#8212; egal wie viel PV vorhanden ist.`);
-  hint('h-sh',`Nach einem SOC-Stopp startet der Miner erst wieder bei <em>${sm+sh}%</em> (${sm}% + ${sh}% Hysterese). Verhindert schnelles Ein-/Ausschalten wenn der Akku genau an der Grenze ist.`);
-  hint('h-sf',`Ab <em>${sf}% SOC</em> läuft der Miner auf voller Leistung (<em>${mx} W</em>) &#8212; egal wie viel PV gerade produziert wird. Der Akku ist voll und der Strom muss irgendwo hin.`);
+  hint('h-pi',`Alle <em>${pi} Sekunden</em> wird der Wechselrichter abgefragt und entschieden ob der Miner laufen darf.`);
+  hint('h-mp',`Ungefährer Verbrauch des Miners wenn er läuft (<em>${mp} W</em>) — im Braiins OS Dashboard ablesbar. pv-miner ändert das Tuning <em>nicht</em>; dieser Wert ist nur die Startschwelle: erst wenn rund ${mp} W PV-Überschuss da sind, wird gestartet.`);
+  hint('h-sm',`Fällt der Akku unter <em>${sm}%</em>, wird der Miner sofort pausiert — egal wie viel PV vorhanden ist.`);
+  hint('h-sh',`Nach einem SOC-Stopp startet der Miner erst wieder bei <em>${sm+sh}%</em> (${sm}% + ${sh}% Hysterese). Verhindert schnelles Ein-/Ausschalten am Schwellwert.`);
+  hint('h-sf',`Ab <em>${sf}% SOC</em> läuft der Miner auch ohne PV-Überschuss — der Akku ist faktisch voll und der Strom muss irgendwo hin.`);
 
   if(ss2===0){
     hint('h-sstart','Mining ist erlaubt sobald PV-Überschuss vorhanden ist und der SOC über der Schutzgrenze liegt. Normaler Betrieb.');
   } else if(ss2>=100){
-    hint('h-sstart','<em>Batterie zuerst:</em> Der Miner startet erst wenn der Akku auf 100% geladen ist. Tagsüber lädt der Akku durch, abends/nachts wird dann mit dem gespeicherten Strom gemint.');
+    hint('h-sstart','<em>Batterie zuerst:</em> Der Miner startet erst wenn der Akku auf 100% geladen ist. Tagsüber lädt der Akku durch, danach wird der Überschuss zum Minen verwendet.');
   } else {
-    hint('h-sstart',`Der Miner startet erst wenn der Akku <em>${ss2}%</em> erreicht hat. Darunter lädt der Akku zuerst. Erst danach wird der Überschuss für Mining verwendet.`);
+    hint('h-sstart',`Der Miner startet erst wenn der Akku <em>${ss2}%</em> erreicht hat. Darunter lädt der Akku zuerst.`);
   }
 
-  hint('h-np',`<em>${np} W</em> Sicherheitspuffer &#8212; der Miner bekommt immer ${np} W weniger als berechnet damit kein Strom vom Netz bezogen wird. Kleiner Wert = mehr Mining, größerer Wert = sicherer kein Netzbezug.`);
-  hint('h-abs',`Wenn <em>P_Akku über +${absw} W</em> liegt, wertet pv-miner das als Akku-Entladung und startet im Auto-Modus nicht neu. Das schützt vor Mining aus der Batterie bei kurzen Regelabweichungen.`);
-  hint('h-hw',`Kleine Schwankungen werden ignoriert: Erst wenn die berechnete Zielleistung um mehr als <em>${hw} W</em> abweicht wird der Miner tatsächlich nachgeregelt. Verhindert ständiges Regulieren bei bewölktem Himmel.`);
+  hint('h-np',`<em>${np} W</em> Sicherheitspuffer — es muss ${np} W mehr Überschuss da sein als der Miner zieht, bevor gestartet wird. Größerer Wert = sicherer kein Netzbezug.`);
+  hint('h-abs',`Wenn der Akku mit mehr als <em>${absw} W</em> entlädt, wertet pv-miner das als Defizit und startet im Auto-Modus nicht neu.`);
 
   const delaySec=hz*pi;
-  hint('h-hz',`Start und Stopp werden erst ausgeführt wenn die Bedingung <em>${hz} Messungen hintereinander</em> erfüllt ist (= ${delaySec} Sekunden). Eine kurze Wolke die nach ${pi}s wieder weg ist löst damit keinen Stopp aus.`);
+  hint('h-hz',`Start und Stopp werden erst ausgeführt wenn die Bedingung <em>${hz} Messungen hintereinander</em> erfüllt ist (= ${delaySec} Sekunden). Eine kurze Wolke löst damit keinen Stopp aus.`);
 
   if(ss==='grid'){
-    hint('h-ss','<em>Akku hat immer Vorrang.</em> Der Miner bekommt nur was tatsächlich ins Netz eingespeist wird &#8212; erst wenn der Akku voll ist (oder keine Kapazität mehr aufnimmt) steigt der Netz-Überschuss und der Miner startet.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8226; Akku lädt 2 kW &#8594; nur 1 kW Einspeisung &#8594; Miner läuft mit ~'+(Math.max(0,1000-np))+' W.');
+    hint('h-ss','<em>Akku hat Vorrang.</em> Der Miner startet erst wenn echt Strom ins Netz eingespeist wird — also wenn der Akku voll ist oder keine Ladung mehr aufnimmt.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8226; Akku lädt 3 kW &#8594; 0 W Einspeisung &#8594; Miner bleibt aus, bis der Akku voll ist.');
   } else {
-    const avail=Math.max(0,5000-2000-np);
-    hint('h-ss','<em>Miner und Akku teilen gleichzeitig.</em> Der Miner startet sobald PV mehr produziert als der Haushalt verbraucht &#8212; egal ob der Akku noch leer ist. Was der Miner nicht braucht, lädt den Akku.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8594; <em>'+avail+' W für den Miner.</em> Der Akku lädt mit dem Rest (oder gar nicht, falls der Miner alles zieht). Vorteil: Miner startet früher am Morgen. Nachteil: Akku lädt langsamer.');
-  }
-
-  if(ls==='pause'){
-    hint('h-ls','Wenn der Überschuss wegfällt (Wolke, Abend): <em>Miner wird komplett gestoppt.</em> Sobald wieder genug PV da ist, startet er wieder. Energiesparend &#8212; kein unnötiger Verbrauch.');
-  } else {
-    hint('h-ls','Wenn der Überschuss zu gering ist: <em>Miner läuft trotzdem weiter mit '+mn+' W.</em> Der fehlende Strom wird aus dem Akku oder dem Netz bezogen. Sinnvoll wenn der Miner warm bleiben soll oder nachts mit Batteriestrom gemint werden soll.',true);
-  }
-
-  if(sl==='pause'){
-    hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner wird gestoppt</em> um den Akku zu schonen. Empfohlene Einstellung &#8212; schützt die Batterie vor Tiefentladung.');
-  } else {
-    hint('h-sl','Wenn der Akku unter '+sm+'% fällt: <em>Miner läuft trotzdem weiter mit '+mn+' W.</em> &#9888;&#65039; Der Akku wird dabei weiter entladen. Nur sinnvoll wenn du eine tiefe Entladung bewusst akzeptierst.',true);
+    hint('h-ss','<em>Miner und Akku teilen sich die Sonne.</em> Der Miner startet sobald die PV-Produktion den Hausverbrauch plus seinen eigenen Bedarf deckt — egal ob der Akku noch lädt.<br><br>Beispiel: 5 kW PV &#8226; 2 kW Haus &#8594; 3 kW frei &#8594; Miner startet, der Akku lädt mit dem Rest. Vorteil: Miner startet früher am Morgen.');
   }
 
   if(te){
-    hint('h-te',`Aktiv: Zwischen <em>${ts}</em> und <em>${tend}</em> greift diese Regel, wenn der Akku zu niedrig ist.`);
-    hint('h-tso',`Im Zeitfenster greift die Regel bei <em>${tso}% SOC oder weniger</em>.`);
-    hint('h-ta',ta==='pause'
-      ? 'Bei niedrigem SOC im Zeitfenster: <em>Miner wird pausiert.</em>'
-      : `Bei niedrigem SOC im Zeitfenster: <em>Miner wird auf ${mn} W reduziert.</em>`, ta!=='pause');
+    hint('h-te',`Aktiv: Zwischen <em>${ts}</em> und <em>${tend}</em> wird der Miner pausiert wenn der Akku bei ${tso}% oder weniger liegt.`);
+    hint('h-tso',`Im Zeitfenster wird pausiert sobald der SOC <em>${tso}% oder weniger</em> beträgt.`);
   } else {
     hint('h-te','Aus: Es gilt nur die normale PV-/SOC-Regelung.');
-    hint('h-tso','Wird nur verwendet, wenn die Zeitfenster-Regel aktiv ist.');
-    hint('h-ta','Wird nur verwendet, wenn die Zeitfenster-Regel aktiv ist.');
+    hint('h-tso','Wird nur verwendet wenn die Zeitfenster-Regel aktiv ist.');
   }
 }
 
@@ -421,9 +364,9 @@ async function fetchStatus(){
     const st=d.display_state||'unknown';
     const b=document.getElementById('badge');
     b.className='badge '+st;
-    const L={mining:'&#9935; Mining',minimum:'&#8595; Minimal',maximum:'&#8593; Vollbetrieb',paused:'&#9646; Pausiert',unknown:'&#8212;'};
+    const L={mining:'&#9935; Mining',paused:'&#9646; Pausiert',unknown:'&#8212;'};
     b.innerHTML=L[st]||st;
-    ['auto','pause','minimum','maximum'].forEach(m=>{
+    ['auto','pause','run'].forEach(m=>{
       document.getElementById('ov-'+m).classList.toggle('active',m===(d.manual_override||'auto'));
     });
     document.getElementById('ts').textContent='aktualisiert '+new Date().toLocaleTimeString('de-AT');
@@ -436,24 +379,19 @@ async function fetchCfg(){
     document.getElementById('f-pi').value=d.fronius?.poll_interval_seconds??30;
     document.getElementById('f-mh').value=d.miner?.host||'';
     document.getElementById('f-ak').value=d.miner?.api_key||'';
-    document.getElementById('f-mn').value=d.miner?.min_power_watt??500;
-    document.getElementById('f-mx').value=d.miner?.max_power_watt??3400;
+    document.getElementById('f-mp').value=d.miner?.miner_power_watt??3000;
     document.getElementById('f-sm').value=d.control?.soc_minimum??15;
     document.getElementById('f-sh').value=d.control?.soc_hysterese??5;
     document.getElementById('f-sf').value=d.control?.soc_freigabe??95;
     document.getElementById('f-sstart').value=d.control?.soc_start_mining??0;
     document.getElementById('f-np').value=d.control?.netz_puffer_watt??200;
     document.getElementById('f-abs').value=d.control?.akku_entlade_sperre_watt??100;
-    document.getElementById('f-hw').value=d.control?.hysterese_watt??300;
     document.getElementById('f-hz').value=d.control?.hysterese_zyklen??2;
     document.getElementById('f-ss').value=d.modes?.surplus_source||'grid';
-    document.getElementById('f-ls').value=d.modes?.low_surplus_action||'pause';
-    document.getElementById('f-sl').value=d.modes?.soc_low_action||'pause';
     document.getElementById('f-te').value=String(!!d.time_rule?.enabled);
     document.getElementById('f-ts').value=d.time_rule?.start||'18:00';
     document.getElementById('f-tend').value=d.time_rule?.end||'07:00';
     document.getElementById('f-tso').value=d.time_rule?.soc_threshold??50;
-    document.getElementById('f-ta').value=d.time_rule?.action||'pause';
     updateHints();
   }catch(e){}
 }
@@ -461,10 +399,10 @@ async function saveCfg(){
   const msg=document.getElementById('smsg');
   const cfg={
     fronius:{host:document.getElementById('f-fh').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
-    miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim(),min_power_watt:+document.getElementById('f-mn').value,max_power_watt:+document.getElementById('f-mx').value},
-    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,akku_entlade_sperre_watt:+document.getElementById('f-abs').value,hysterese_watt:+document.getElementById('f-hw').value,hysterese_zyklen:+document.getElementById('f-hz').value},
-    modes:{surplus_source:document.getElementById('f-ss').value,low_surplus_action:document.getElementById('f-ls').value,soc_low_action:document.getElementById('f-sl').value},
-    time_rule:{enabled:document.getElementById('f-te').value==='true',start:document.getElementById('f-ts').value,end:document.getElementById('f-tend').value,soc_threshold:+document.getElementById('f-tso').value,action:document.getElementById('f-ta').value}
+    miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim(),miner_power_watt:+document.getElementById('f-mp').value},
+    control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,akku_entlade_sperre_watt:+document.getElementById('f-abs').value,hysterese_zyklen:+document.getElementById('f-hz').value},
+    modes:{surplus_source:document.getElementById('f-ss').value},
+    time_rule:{enabled:document.getElementById('f-te').value==='true',start:document.getElementById('f-ts').value,end:document.getElementById('f-tend').value,soc_threshold:+document.getElementById('f-tso').value}
   };
   try{
     const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});
@@ -732,25 +670,10 @@ class BraiinsAPI:
             return None
 
     # ── public API ────────────────────────────────────────────────────────────
-
-    def set_power_target(self, watt: int) -> bool:
-        query = (
-            f'mutation {{ bosminer {{ config {{ '
-            f'updateAutotuning(input: {{ powerTarget: {watt} }}, apply: true) '
-            f'{{ ... on AutotuningOut {{ autotuning {{ powerTarget }} }} '
-            f'... on AutotuningError {{ message }} '
-            f'... on AttributeError {{ message }} }} }} }} }}'
-        )
-        d = self._gql(query)
-        if d is None:
-            return False
-        out = ((d.get("data") or {})
-               .get("bosminer", {}).get("config", {}).get("updateAutotuning", {}))
-        if (out.get("autotuning") or {}).get("powerTarget") is not None:
-            self._log.debug("set_power_target(%dW) OK", watt)
-            return True
-        self._log.warning("set_power_target(%dW): %s", watt, d.get("errors") or out)
-        return False
+    #
+    # NOTE: pv-miner deliberately only starts/stops the miner. It never touches
+    # the power target, hashrate target, autotuning or fan settings — whatever
+    # is configured in Braiins OS itself stays exactly as it is.
 
     def pause(self) -> bool:
         d = self._gql(self._STOP_MUTATION)
@@ -777,18 +700,24 @@ class BraiinsAPI:
         return ok
 
     def get_status(self) -> dict | None:
+        """Return {power_watt, paused} or None if the miner is unreachable.
+
+        ``paused`` reflects whether the bosminer service is stopped — when it
+        is, the summary query fails with an UNAVAILABLE error. When it runs,
+        data is returned (``power_watt`` may briefly be 0 during ramp-up).
+        """
         d = self._gql(self._STATUS_QUERY)
         if d is None:
             return None
         # Bosminer stopped → "Service unavailable" with UNAVAILABLE code
         errors = d.get("errors") or []
         if any((e.get("extensions") or {}).get("code") == "UNAVAILABLE" for e in errors):
-            return {"power_watt": 0, "paused": True, "hashrate_ths": 0.0}
+            return {"power_watt": 0, "paused": True}
         power = ((d.get("data") or {})
                  .get("bosminer", {}).get("info", {})
                  .get("summary", {}).get("power") or {})
         w = int(power.get("approxConsumptionW") or 0)
-        return {"power_watt": w, "paused": w == 0, "hashrate_ths": 0.0}
+        return {"power_watt": w, "paused": False}
 
 
 # ---------------------------------------------------------------------------
@@ -826,10 +755,9 @@ class PowerController:
         self._state   = state
         self._log     = logging.getLogger("cycle")
 
+        # The controller only ever holds two states: "pause" or "run".
         self._cur_action = "pause"
-        self._cur_target = 0
         self._pend_action: str | None = None
-        self._pend_target = 0
         self._pend_count  = 0
         self._soc_blocked = False
         self._fronius_err = 0
@@ -867,21 +795,37 @@ class PowerController:
             return start <= now < end
         return now >= start or now < end
 
-    def _decide(self, pf: dict, cfg: dict) -> tuple[str, int, float]:
-        """Return (action, target_watt, verfuegbar_w)."""
+    def _decide(self, pf: dict, cfg: dict, cur_miner_w: int) -> tuple[str, float]:
+        """Return (action, verfuegbar_w).
+
+        action is "pause" or "run". No power target — pv-miner only switches
+        the miner on or off, the miner regulates its own consumption.
+
+        verfuegbar_w is the PV surplus "as if the miner were off" (the miner's
+        current draw is added back so the calculation stays self-consistent
+        whether the miner is running or not).
+        """
         modes    = cfg.get("modes", {})
         ctrl     = cfg["control"]
-        miner    = cfg["miner"]
         override = modes.get("manual_override", "auto")
-        low_act  = modes.get("low_surplus_action", "pause")
-        soc_act  = modes.get("soc_low_action",     "pause")
         surplus_source = modes.get("surplus_source", "grid")
-        min_w    = miner["min_power_watt"]
-        max_w    = miner["max_power_watt"]
+        need_w = cfg["miner"].get("miner_power_watt", 3000)
+        puffer = ctrl["netz_puffer_watt"]
 
-        if override == "pause":   return ("pause", 0, 0.0)
-        if override == "minimum": return ("mine",  min_w, float(min_w))
-        if override == "maximum": return ("mine",  max_w, float(max_w))
+        # ── Verfügbarer Überschuss (so als ob der Miner aus wäre) ────────────
+        if surplus_source == "pv_and_battery":
+            # PV − reiner Hausverbrauch − Puffer.
+            # abs(p_load) enthält den Miner bereits → cur_miner_w abziehen.
+            p_load_house = abs(pf.get("p_load", 0.0)) - cur_miner_w
+            verfuegbar = pf["p_pv"] - p_load_house - puffer
+        else:
+            # grid: nur Netz-Einspeisung. Der laufende Miner-Zug wird
+            # zurückaddiert (er frisst sonst die sichtbare Einspeisung auf).
+            grid_export = abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0
+            verfuegbar = grid_export + cur_miner_w - puffer
+
+        if override == "pause": return ("pause", verfuegbar)
+        if override == "run":   return ("run",   verfuegbar)
 
         soc        = pf["soc"]
         soc_resume = ctrl["soc_minimum"] + ctrl["soc_hysterese"]
@@ -889,197 +833,143 @@ class PowerController:
         # ── SOC protection (absolute minimum) ───────────────────────────────
         if self._soc_blocked:
             if soc < soc_resume:
-                return ("mine", min_w, 0.0) if soc_act == "minimum_power" else ("pause", 0, 0.0)
+                return ("pause", verfuegbar)
             self._soc_blocked = False
 
         if soc < ctrl["soc_minimum"]:
             self._soc_blocked = True
-            return ("mine", min_w, 0.0) if soc_act == "minimum_power" else ("pause", 0, 0.0)
+            return ("pause", verfuegbar)
 
         # ── Optional time-window battery guard ──────────────────────────────
         if self._time_rule_active(cfg, soc):
-            action = cfg.get("time_rule", {}).get("action", "pause")
-            return ("mine", min_w, 0.0) if action == "minimum_power" else ("pause", 0, 0.0)
+            return ("pause", verfuegbar)
 
-        # ── SOC start threshold (Case 2: "erst minen wenn Akku voll") ───────
+        # ── SOC start threshold ("erst minen wenn Akku weit genug geladen") ─
         soc_start = ctrl.get("soc_start_mining", 0)
         if soc_start > 0 and soc < soc_start:
-            return ("mine", min_w, 0.0) if low_act == "minimum_power" else ("pause", 0, 0.0)
+            return ("pause", verfuegbar)
 
-        # ── SOC freigabe: Akku voll → volle Power ───────────────────────────
+        # ── SOC freigabe: Akku (fast) voll → laufen lassen, egal wie viel PV ─
         if soc >= ctrl["soc_freigabe"]:
             entlade_sperre = ctrl.get("akku_entlade_sperre_watt", 100)
-            exporting = pf["p_grid"] < -ctrl["netz_puffer_watt"]
-            battery_not_discharging = pf["p_akku"] <= entlade_sperre
-            if exporting or battery_not_discharging:
-                return ("mine", max_w, float(max_w))
+            if pf["p_grid"] < -puffer or pf["p_akku"] <= entlade_sperre:
+                return ("run", verfuegbar)
 
-        # ── Verfügbare Leistung berechnen ────────────────────────────────────
-        puffer = ctrl["netz_puffer_watt"]
-
-        if surplus_source == "pv_and_battery":
-            # Case 1: PV − Hausverbrauch − Puffer + aktueller Miner-Zug
-            # = was der Miner haben kann ohne Netzbezug zu erzeugen
-            # (abs(p_load) enthält den Miner bereits → aufaddieren für Netto-Hausverbrauch)
-            p_load_house = abs(pf.get("p_load", 0.0)) - self._cur_target
-            verfuegbar = pf["p_pv"] - p_load_house - puffer
+        # ── Überschuss-basierte Entscheidung ─────────────────────────────────
+        # Läuft der Miner schon, zählt sein tatsächlicher Verbrauch als
+        # Schwelle (robust, unabhängig vom konfigurierten Schätzwert).
+        # Steht er, wird der konfigurierte Schätzwert als Startschwelle benutzt.
+        if self._cur_action == "run" and cur_miner_w > 0:
+            threshold = cur_miner_w
         else:
-            # Default: nur Netz-Einspeisung (Akku lädt zuerst)
-            entlade_sperre = ctrl.get("akku_entlade_sperre_watt", 100)
-            if pf["p_akku"] > entlade_sperre:
-                verfuegbar = 0.0
-            else:
-                verfuegbar = (abs(pf["p_grid"]) if pf["p_grid"] < 0 else 0.0) - puffer
+            threshold = need_w
+        action = "run" if verfuegbar >= threshold else "pause"
+        return (action, verfuegbar)
 
-        if verfuegbar < min_w:
-            return ("mine", min_w, verfuegbar) if low_act == "minimum_power" else ("pause", 0, verfuegbar)
-
-        target = max(min_w, min(int(verfuegbar), max_w))
-        return ("mine", target, verfuegbar)
-
-    def _hysterese(self, action: str, target: int, cfg: dict) -> tuple[str, int]:
-        hyst_w  = cfg["control"]["hysterese_watt"]
+    def _hysterese(self, action: str, cfg: dict) -> str:
+        """Confirm a start/stop only after N consecutive cycles agree."""
         hyst_cy = cfg["control"]["hysterese_zyklen"]
 
         if action == self._cur_action:
-            if action == "pause":
-                return ("pause", 0)
-            if abs(target - self._cur_target) <= hyst_w:
-                return (self._cur_action, self._cur_target)
             self._pend_action = None
             self._pend_count  = 0
-            return (action, target)
+            return self._cur_action
 
         if self._pend_action == action:
-            self._pend_count  += 1
-            self._pend_target  = target
+            self._pend_count += 1
         else:
-            self._pend_action  = action
-            self._pend_target  = target
-            self._pend_count   = 1
+            self._pend_action = action
+            self._pend_count  = 1
 
         if self._pend_count >= hyst_cy:
             self._pend_action = None
             self._pend_count  = 0
-            return (action, self._pend_target)
-        return (self._cur_action, self._cur_target)
+            return action
+        return self._cur_action
 
-    def _display(self, action: str, target: int, cfg: dict) -> str:
-        if action == "pause":
-            return "paused"
-        if target <= cfg["miner"]["min_power_watt"]:
-            return "minimum"
-        if target >= cfg["miner"]["max_power_watt"]:
-            return "maximum"
-        return "mining"
+    @staticmethod
+    def _display(action: str) -> str:
+        return "mining" if action == "run" else "paused"
 
-    def _apply(self, action: str, target: int) -> None:
-        if action == "pause":
-            if self._cur_action != "pause":
-                if self._braiins.pause():
-                    self._cur_action  = "pause"
-                    self._cur_target  = 0
-                    self._braiins_err = 0
-                else:
-                    self._braiins_err += 1
+    def _apply(self, action: str) -> None:
+        if action == self._cur_action:
+            return
+        ok = self._braiins.pause() if action == "pause" else self._braiins.resume()
+        if ok:
+            self._cur_action  = action
+            self._braiins_err = 0
         else:
-            if self._cur_action == "pause":
-                if not self._braiins.resume():
-                    self._braiins_err += 1
-                    return
-            if self._braiins.set_power_target(target):
-                self._cur_action  = "mine"
-                self._cur_target  = target
-                self._braiins_err = 0
-            else:
-                self._braiins_err += 1
-        if self._braiins_err >= 5:
-            self._log.critical("Braiins: %d consecutive failures", self._braiins_err)
+            self._braiins_err += 1
+            if self._braiins_err >= 5:
+                self._log.critical("Braiins: %d consecutive failures", self._braiins_err)
 
     def run_cycle(self) -> None:
-        cfg      = self._cfg.get()
-        override = cfg.get("modes", {}).get("manual_override", "auto")
-        pf       = self._fronius.get_powerflow()
+        cfg        = self._cfg.get()
+        override   = cfg.get("modes", {}).get("manual_override", "auto")
+        miner_host = cfg.get("miner", {}).get("host")
+        pf         = self._fronius.get_powerflow()
 
+        # Query the miner first — gives actual consumption and whether it runs.
+        miner_st    = self._braiins.get_status() if miner_host else None
+        cur_miner_w = miner_st["power_watt"] if miner_st else 0
+        if miner_st is not None:
+            # Sync our notion of state with reality (catches manual changes
+            # made directly in Braiins OS).
+            self._cur_action = "pause" if miner_st["paused"] else "run"
+
+        # ── Fronius unreachable ─────────────────────────────────────────────
         if pf is None:
             self._fronius_err += 1
             self._log.warning("Fronius unreachable (streak: %d)", self._fronius_err)
-            # Manual override: apply immediately even without Fronius data
-            if override != "auto":
-                miner    = cfg["miner"]
-                min_w, max_w = miner["min_power_watt"], miner["max_power_watt"]
-                if override == "pause":
-                    self._apply("pause", 0)
-                elif override == "minimum":
-                    self._apply("mine", min_w)
-                elif override == "maximum":
-                    self._apply("mine", max_w)
-                self._state.update(
-                    manual_override=override,
-                    display_state=self._display(
-                        "pause" if override == "pause" else "mine",
-                        0 if override == "pause" else (min_w if override == "minimum" else max_w),
-                        cfg,
-                    ),
-                )
-                return
-            if self._fronius_err >= 3 and self._cur_action != "pause":
+            if override != "auto" and miner_host:
+                self._apply("pause" if override == "pause" else "run")
+            elif self._fronius_err >= 3 and self._cur_action != "pause":
                 self._log.warning("Fronius 3x unreachable → pausing miner (safety)")
-                self._apply("pause", 0)
+                self._apply("pause")
+            self._state.update(
+                verfuegbar_w=None,
+                miner_power_w=miner_st["power_watt"] if miner_st else None,
+                display_state=self._display(self._cur_action) if miner_host else "unknown",
+                manual_override=override,
+            )
             return
 
         self._fronius_err = 0
         soc = pf["soc"]
-
         self._log.debug("Fronius: p_grid=%.0fW p_pv=%.0fW p_akku=%.0fW p_load=%.0fW soc=%.1f%%",
                         pf["p_grid"], pf["p_pv"], pf["p_akku"], pf.get("p_load", 0), soc)
 
-        if not cfg.get("miner", {}).get("host"):
+        if not miner_host:
             self._state.update(
                 soc=soc, p_grid=pf["p_grid"], p_pv=pf["p_pv"],
                 p_akku=pf["p_akku"], p_load=pf.get("p_load"),
                 verfuegbar_w=None, miner_power_w=None,
-                display_state="unknown",
-                manual_override=cfg.get("modes", {}).get("manual_override", "auto"),
+                display_state="unknown", manual_override=override,
             )
             self._log.info("[cycle] Fronius OK, Antminer IP noch nicht konfiguriert")
             return
 
-        desired_a, desired_t, verfuegbar = self._decide(pf, cfg)
-        # Bypass hysteresis for manual overrides — apply immediately
-        if override != "auto":
-            action, target = desired_a, desired_t
-        else:
-            action, target = self._hysterese(desired_a, desired_t, cfg)
-        display                          = self._display(action, target, cfg)
+        desired, verfuegbar = self._decide(pf, cfg, cur_miner_w)
+        # Manual overrides apply immediately — no start/stop hysteresis.
+        action = desired if override != "auto" else self._hysterese(desired, cfg)
 
-        miner_st = self._braiins.get_status()
         self._state.update(
             soc=soc, p_grid=pf["p_grid"], p_pv=pf["p_pv"],
             p_akku=pf["p_akku"], p_load=pf.get("p_load"),
             verfuegbar_w=max(0.0, verfuegbar),
             miner_power_w=miner_st["power_watt"] if miner_st else None,
-            display_state=display,
-            manual_override=cfg.get("modes", {}).get("manual_override", "auto"),
+            display_state=self._display(action),
+            manual_override=override,
         )
 
-        no_change = (action == self._cur_action and
-                     (action == "pause" or target == self._cur_target))
-        if no_change:
-            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → keine Änderung",
-                           soc, verfuegbar)
+        if action == self._cur_action:
+            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → keine Änderung (%s)",
+                           soc, verfuegbar, self._cur_action)
             return
 
-        if action == "pause":
-            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → PAUSE", soc, verfuegbar)
-        elif display == "minimum":
-            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → MINIMAL %dW", soc, verfuegbar, target)
-        elif display == "maximum":
-            self._log.info("[cycle] SOC=%.0f%% → MAX_POWER %dW (SOC Freigabe)", soc, target)
-        else:
-            self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → target=%dW", soc, verfuegbar, target)
-
-        self._apply(action, target)
+        self._log.info("[cycle] SOC=%.0f%% verfügbar=%.0fW → %s",
+                        soc, verfuegbar, "START" if action == "run" else "PAUSE")
+        self._apply(action)
 
 
 # ---------------------------------------------------------------------------
@@ -1097,14 +987,14 @@ def validate_config_patch(data: dict) -> str | None:
     time_rule = data.get("time_rule", {})
 
     try:
-        min_w = int(miner.get("min_power_watt", 0))
-        max_w = int(miner.get("max_power_watt", 0))
-        if not (100 <= min_w <= max_w <= 10000):
-            return "Miner-Leistungsgrenzen sind ungültig"
+        if not (500 <= int(miner.get("miner_power_watt", 0)) <= 10000):
+            return "Miner-Verbrauch muss zwischen 500 und 10000 W liegen"
         if not (0 <= int(ctrl.get("soc_minimum", 0)) <= 100):
             return "SOC Schutzgrenze muss zwischen 0 und 100 liegen"
         if not (0 <= int(ctrl.get("soc_hysterese", 0)) <= 50):
             return "SOC Hysterese muss zwischen 0 und 50 liegen"
+        if not (0 <= int(ctrl.get("netz_puffer_watt", 0)) <= 5000):
+            return "Netz-Puffer muss zwischen 0 und 5000 W liegen"
         if not (0 <= int(ctrl.get("akku_entlade_sperre_watt", 100)) <= 2000):
             return "Akku-Entlade-Sperre muss zwischen 0 und 2000 W liegen"
         for key in ("soc_freigabe", "soc_start_mining"):
@@ -1117,14 +1007,8 @@ def validate_config_patch(data: dict) -> str | None:
 
     if modes.get("surplus_source", "grid") not in ("grid", "pv_and_battery"):
         return "Ungültige Überschuss-Quelle"
-    if modes.get("low_surplus_action", "pause") not in ("pause", "minimum_power"):
-        return "Ungültige Aktion bei wenig Überschuss"
-    if modes.get("soc_low_action", "pause") not in ("pause", "minimum_power"):
-        return "Ungültige Aktion bei niedrigem SOC"
 
     if time_rule:
-        if time_rule.get("action", "pause") not in ("pause", "minimum_power"):
-            return "Ungültige Zeitfenster-Aktion"
         if not _is_time(time_rule.get("start", "")) or not _is_time(time_rule.get("end", "")):
             return "Zeitfenster-Uhrzeiten müssen gültig sein"
         try:
@@ -1232,7 +1116,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
     def api_override():
         data = request.get_json(silent=True) or {}
         mode = data.get("mode", "auto")
-        if mode not in ("auto", "pause", "minimum", "maximum"):
+        if mode not in ("auto", "pause", "run"):
             return jsonify({"error": "Invalid mode"}), 400
         cfg_manager.set_override(mode)
         state.update(manual_override=mode)

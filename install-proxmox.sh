@@ -141,12 +141,12 @@ if ! pct exec "$CTID" -- sh -c 'test -s /data/config.json 2>/dev/null'; then
 pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
 {
   \"fronius\": { \"host\": \"\", \"poll_interval_seconds\": 30 },
-  \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"min_power_watt\": 500, \"max_power_watt\": 3400 },
+  \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"miner_power_watt\": 3000 },
   \"control\": { \"soc_minimum\": 15, \"soc_hysterese\": 5, \"soc_freigabe\": 95,
                 \"soc_start_mining\": 0, \"netz_puffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
-                \"hysterese_watt\": 300, \"hysterese_zyklen\": 2 },
-  \"modes\":   { \"surplus_source\": \"grid\", \"low_surplus_action\": \"pause\", \"soc_low_action\": \"pause\", \"manual_override\": \"auto\" },
-  \"time_rule\": { \"enabled\": false, \"start\": \"18:00\", \"end\": \"07:00\", \"soc_threshold\": 50, \"action\": \"pause\" },
+                \"hysterese_zyklen\": 2 },
+  \"modes\":   { \"surplus_source\": \"grid\", \"manual_override\": \"auto\" },
+  \"time_rule\": { \"enabled\": false, \"start\": \"18:00\", \"end\": \"07:00\", \"soc_threshold\": 50 },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
 }
 JSON"
@@ -253,9 +253,9 @@ cat << EOF
 
 Next steps:
   1. Open Web UI → set Fronius IP and Miner IP
-  2. Set Braiins OS API key (if configured)
-  3. Adjust max_power_watt to your autotuned range
-  4. Choose low-surplus mode: Pause vs. Minimalbetrieb
+  2. Set Braiins OS root password (leave empty if none)
+  3. Set "Stromverbrauch wenn der Miner läuft" to the miner's actual draw
+  4. Choose surplus source: grid-export only vs. PV minus house load
 
 Operations:
   Logs:     pct exec $CTID -- tail -f /var/log/pv-miner.log

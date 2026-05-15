@@ -1,8 +1,8 @@
 # pv-miner
 
-Controls an Antminer S19j Pro (Braiins OS) based on PV surplus and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
+Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV surplus and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
 
-Power target is set continuously via the Braiins OS Public REST API. A built-in web UI handles all configuration and provides live status.
+**pv-miner only switches the miner on and off.** It never changes the power target, hashrate target, autotuning or fan settings — whatever you configured in Braiins OS stays exactly as it is. The miner regulates its own consumption; pv-miner just decides *when* it's allowed to run. Control happens via the Braiins OS GraphQL API. A built-in web UI handles all configuration and provides live status.
 
 ## One-line install
 
@@ -36,53 +36,48 @@ Open the Web UI and fill in:
 
 - **Fronius IP** — the GEN24 Plus (the one with the battery, not the Symo)
 - **Miner IP** — the Antminer running Braiins OS
-- **API Key** — optional; generate under Braiins OS → Settings → API Access
-- **max_power_watt** — check your autotuned range in the Braiins OS web interface first
-- **Zeitfenster-Schutz** — optional rule for evening/night: if SOC is at or below a configured value, pause or reduce the miner
+- **Braiins OS password** — the password of the `root` login; leave empty if none is set
+- **Stromverbrauch wenn der Miner läuft** — roughly what the miner draws when running (read it off the Braiins OS dashboard). Used purely as the start threshold.
+- **Zeitfenster-Schutz** — optional rule for evening/night: if SOC is at or below a configured value, pause the miner during that window
 
 ## Control logic
 
+The miner is either **running** or **paused** — nothing in between.
+
 ```
 1. SOC < soc_minimum (15%)
-   → pause or minimum power (configurable)
+   → pause
    → resumes when SOC ≥ soc_minimum + soc_hysterese
 
 2. SOC ≥ soc_freigabe (95%)
-   → full power (battery full, surplus must go somewhere)
+   → run (battery full, surplus must go somewhere)
 
 3. Otherwise
-   available = |P_Grid| − netz_puffer_watt   (only when exporting to grid)
-   P_Akku > akku_entlade_sperre_watt          → treat as no surplus
-   available < min_power_watt  → pause or minimum power (configurable)
-   otherwise                   → set power_target = clamp(available, min, max)
+   surplus = available PV power "as if the miner were off"
+     grid mode:           |P_Grid exported| + current miner draw − netz_puffer_watt
+     pv_and_battery mode: P_PV − house load − netz_puffer_watt
+   miner paused → start when surplus ≥ miner_power_watt
+   miner running → keep running while surplus covers its actual draw, else pause
 ```
 
-Optional time-window protection runs after the hard SOC minimum and before PV surplus control. Example: between 18:00 and 07:00, if SOC ≤ 50%, pause the miner or reduce it to minimum power.
+Optional time-window protection runs after the hard SOC minimum: e.g. between 18:00 and 07:00, if SOC ≤ 50%, pause the miner.
 
-Flapping is suppressed by two independent hysteresis layers: start/stop requires `hysterese_zyklen` consecutive confirmations; power adjustments are skipped when the delta is below `hysterese_watt`.
+Flapping is suppressed by start/stop hysteresis: a state change is only executed after `hysterese_zyklen` consecutive cycles agree.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
-- Braiins OS: official Public REST API v1.4 endpoints: `PUT /api/v1/performance/power-target` with `{"watt": <W>}`, `PUT /api/v1/actions/pause`, `PUT /api/v1/actions/resume`, and `GET /api/v1/miner/stats`.
+- Braiins OS: GraphQL API at `/graphql`. pv-miner logs in as `root` (`mutation auth { login }`), which sets a `session_id` cookie (1 h TTL, auto-refreshed). It uses only `bosminer { start }` / `bosminer { stop }` and reads `bosminer { info { summary { power } } }`. The power target and tuning are never written.
 
-## Braiins OS modes
+## Override buttons
 
-In the web UI under **Braiins OS Betriebsmodi** you can choose what happens in two scenarios:
-
-| Scenario | Option A | Option B |
-|---|---|---|
-| Low PV surplus | **Pause** (miner off, saves energy) | **Minimalbetrieb** (~500 W, miner always runs) |
-| Low battery SOC | **Pause** (protect battery) | **Minimalbetrieb** (~500 W) |
-
-In addition, the **Override** buttons let you force any state immediately:
+The **Override** buttons force a state immediately, bypassing the automatic logic until you switch back to Auto:
 
 | Button | Effect |
 |---|---|
-| Auto | Follow the automatic control logic |
-| Pause | Force pause |
-| Minimalbetrieb | Force ~500 W regardless of surplus |
-| Vollbetrieb | Force max power regardless of surplus |
+| Auto | Follow the automatic PV-/SOC control logic |
+| Pause erzwingen | Force pause |
+| Laufen lassen | Force the miner to run, regardless of surplus |
 
 ## Customising the install
 
