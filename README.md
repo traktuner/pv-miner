@@ -2,7 +2,7 @@
 
 Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV surplus and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
 
-**pv-miner only pauses and resumes the miner.** It never changes the power target, hashrate target, autotuning or fan settings — whatever you configured in Braiins OS stays exactly as it is. The miner regulates its own consumption; pv-miner just decides *when* it's allowed to run. Control happens via the Braiins OS Public API. A built-in web UI handles all configuration and provides live status.
+**pv-miner pauses and resumes the miner based on PV surplus.** It does not change the power target, autotuning mode or fan settings — those stay exactly as configured in Braiins OS. The only value it ever writes is the hashrate target, and only when you explicitly change it in the web UI. The miner regulates its own consumption; pv-miner decides *when* it runs. Control happens via the Braiins OS Public API. A built-in web UI handles all configuration and provides live status.
 
 ## One-line install
 
@@ -37,37 +37,46 @@ Open the Web UI and fill in:
 - **Fronius IP** — the GEN24 Plus (the one with the battery, not the Symo)
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
-- **Stromverbrauch wenn der Miner läuft** — roughly what the miner draws when running (read it off the Braiins OS dashboard). Used purely as the start threshold.
+- **Operating mode** — how PV surplus is determined (see below)
+- **Ziel-Hashrate** — read live from the miner; change it here to push a new target (e.g. 96 → 100 TH/s) to Braiins OS
 - **Zeitfenster-Schutz** — optional rule for evening/night: if SOC is at or below a configured value, pause the miner during that window
+
+## Operating modes
+
+The mode decides when there is "enough sun" to mine:
+
+| Mode | Logic |
+|---|---|
+| **Netz-Einspeisung** (`grid`) | Battery charges fully first. Mine only what is actually exported to the grid. |
+| **PV minus Hausverbrauch** (`pv_and_battery`) | Mine as soon as PV exceeds the house load — miner and battery share the surplus. |
+| **Akku hat Vorrang** (`battery_first`) | Battery charges at full power; the miner starts only when PV production exceeds a fixed threshold (`pv_schwelle_watt`, e.g. 12 kW). Best when the battery charges fast (e.g. 11 kW) — once PV is high enough there is room for both. |
 
 ## Control logic
 
 The miner is either **running** or **paused** — nothing in between.
 
 ```
-1. SOC < soc_minimum (15%)
-   → pause
-   → resumes when SOC ≥ soc_minimum + soc_hysterese
-
-2. SOC ≥ soc_freigabe (95%)
-   → run (battery full, surplus must go somewhere)
-
-3. Otherwise
-   surplus = available PV power "as if the miner were off"
-     grid mode:           |P_Grid exported| + current miner draw − netz_puffer_watt
-     pv_and_battery mode: P_PV − house load − netz_puffer_watt
-   miner paused → start when surplus ≥ miner_power_watt
-   miner running → keep running while surplus covers its actual draw, else pause
+1. SOC < soc_minimum (15%)            → pause; resumes at soc_minimum + soc_hysterese
+2. SOC ≥ soc_freigabe (95%)           → run (battery full, surplus must go somewhere)
+3. Otherwise — depends on the mode:
+   grid / pv_and_battery:
+     surplus = PV power available "as if the miner were off"
+     paused  → start when surplus ≥ estimated miner draw
+     running → keep running while surplus covers its actual draw
+   battery_first:
+     run when P_PV ≥ pv_schwelle_watt
 ```
+
+The estimated miner draw for the start decision is derived from the hashrate target (≈ `hashrate × 33 W/TH`). While the miner runs, its real measured consumption is used instead.
 
 Optional time-window protection runs after the hard SOC minimum: e.g. between 18:00 and 07:00, if SOC ≤ 50%, pause the miner.
 
-Flapping is suppressed by start/stop hysteresis: a state change is only executed after `hysterese_zyklen` consecutive cycles agree.
+Flapping is suppressed by start/stop hysteresis: a state change is only executed after `hysterese_zyklen` consecutive cycles agree. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
-- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, 1 h TTL, auto-refreshed). It uses only `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, and reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle) and `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`). The power target, tuning and fans are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, 1 h TTL, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`) and `GET /api/v1/performance/mode` (hashrate target). The only write besides pause/resume is `PUT /api/v1/performance/hashrate-target` — issued solely when you change the hashrate target in the web UI. Power target, autotuning mode and fans are never written.
 
 ## Override buttons
 

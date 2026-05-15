@@ -141,10 +141,10 @@ if ! pct exec "$CTID" -- sh -c 'test -s /data/config.json 2>/dev/null'; then
 pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
 {
   \"fronius\": { \"host\": \"\", \"poll_interval_seconds\": 30 },
-  \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"miner_power_watt\": 3000 },
+  \"miner\":   { \"host\": \"\", \"api_key\": \"\" },
   \"control\": { \"soc_minimum\": 15, \"soc_hysterese\": 5, \"soc_freigabe\": 95,
                 \"soc_start_mining\": 0, \"netz_puffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
-                \"hysterese_zyklen\": 2 },
+                \"pv_schwelle_watt\": 12000, \"hysterese_zyklen\": 2 },
   \"modes\":   { \"surplus_source\": \"grid\", \"manual_override\": \"auto\" },
   \"time_rule\": { \"enabled\": false, \"start\": \"18:00\", \"end\": \"07:00\", \"soc_threshold\": 50 },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
@@ -254,8 +254,8 @@ cat << EOF
 Next steps:
   1. Open Web UI → set Fronius IP and Miner IP
   2. Set Braiins OS root password (leave empty if none)
-  3. Set "Stromverbrauch wenn der Miner läuft" to the miner's actual draw
-  4. Choose surplus source: grid-export only vs. PV minus house load
+  3. Pick an operating mode (grid-export / PV-minus-house / battery-priority)
+  4. Optionally set the hashrate target — it is read live from the miner
 
 Operations:
   Logs:     pct exec $CTID -- tail -f /var/log/pv-miner.log
