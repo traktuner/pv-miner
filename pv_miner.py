@@ -32,6 +32,10 @@ WATT_PER_TH = 33
 DEFAULT_CONFIG: dict = {
     "fronius": {
         "host": "",
+        # Optional: a second inverter (e.g. a Symo) that is NOT linked to the
+        # hybrid. Only its PV production is added; grid/battery/SOC always come
+        # from the hybrid above. Leave empty if there is only one inverter.
+        "pv2_host": "",
         "poll_interval_seconds": 30,
     },
     "miner": {
@@ -178,7 +182,12 @@ h2{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;lette
         <div class="field">
           <label>Fronius GEN24 Plus — IP</label>
           <input id="f-fh" placeholder="192.168.1.xxx">
-          <div class="hint">IP-Adresse des Hybrid-Wechselrichters <em>mit Batterie</em> (nicht der Symo).</div>
+          <div class="hint">IP-Adresse des Hybrid-Wechselrichters <em>mit Batterie</em>. Liefert Netz, Akku, SOC und seine eigene PV.</div>
+        </div>
+        <div class="field">
+          <label>2. Wechselrichter — IP (optional)</label>
+          <input id="f-fh2" placeholder="leer = nur ein Wechselrichter">
+          <div class="hint">Nur n&#246;tig wenn du einen <em>zweiten</em> Wechselrichter hast (z.B. Fronius Symo), der nicht am Hybrid h&#228;ngt. pv-miner addiert dessen PV-Produktion &#8212; sonst fehlt sie in PV und Hausverbrauch.</div>
         </div>
         <div class="field">
           <label>Antminer — IP</label>
@@ -406,6 +415,7 @@ async function fetchCfg(){
   try{
     const d=await(await fetch('/api/config')).json();
     document.getElementById('f-fh').value=d.fronius?.host||'';
+    document.getElementById('f-fh2').value=d.fronius?.pv2_host||'';
     document.getElementById('f-pi').value=d.fronius?.poll_interval_seconds??30;
     document.getElementById('f-mh').value=d.miner?.host||'';
     document.getElementById('f-ak').value=d.miner?.api_key||'';
@@ -428,7 +438,7 @@ async function fetchCfg(){
 async function saveCfg(){
   const msg=document.getElementById('smsg');
   const cfg={
-    fronius:{host:document.getElementById('f-fh').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
+    fronius:{host:document.getElementById('f-fh').value.trim(),pv2_host:document.getElementById('f-fh2').value.trim(),poll_interval_seconds:+document.getElementById('f-pi').value},
     miner:{host:document.getElementById('f-mh').value.trim(),api_key:document.getElementById('f-ak').value.trim()},
     control:{soc_minimum:+document.getElementById('f-sm').value,soc_hysterese:+document.getElementById('f-sh').value,soc_freigabe:+document.getElementById('f-sf').value,soc_start_mining:+document.getElementById('f-sstart').value,netz_puffer_watt:+document.getElementById('f-np').value,akku_entlade_sperre_watt:+document.getElementById('f-abs').value,pv_schwelle_watt:+document.getElementById('f-pvs').value,hysterese_zyklen:+document.getElementById('f-hz').value},
     modes:{surplus_source:document.getElementById('f-ss').value},
@@ -588,25 +598,50 @@ class FroniusAPI:
         scheme = parsed.scheme or "http"
         return f"{scheme}://{netloc}"
 
+    def _fetch(self, host: str) -> dict:
+        """Fetch the PowerFlow Body.Data dict from one inverter."""
+        url = f"{self._base(host)}/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+        r = _http.get(url, timeout=self._timeout)
+        r.raise_for_status()
+        return r.json()["Body"]["Data"]
+
     def get_powerflow(self) -> dict | None:
-        host = self._cfg.get()["fronius"]["host"]
+        cfg = self._cfg.get()["fronius"]
+        host = cfg["host"]
         if not host:
             return None
-        url = f"{self._base(host)}/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
         try:
-            r = _http.get(url, timeout=self._timeout)
-            r.raise_for_status()
-            data = r.json()
-            site      = data["Body"]["Data"]["Site"]
-            inverters = data["Body"]["Data"].get("Inverters", {})
+            data      = self._fetch(host)
+            site      = data["Site"]
+            inverters = data.get("Inverters", {})
             soc = self._first_soc(inverters)
             if soc is None:
                 raise ValueError("Fronius response has no battery SOC")
+            p_grid = float(site.get("P_Grid") or 0.0)
+            p_akku = float(site.get("P_Akku") or 0.0)
+            p_pv   = float(site.get("P_PV")   or 0.0)
+            p_load = float(site.get("P_Load") or 0.0)
+
+            # Second inverter (e.g. a Symo that is NOT linked to the hybrid):
+            # its production is invisible to the hybrid's local API, so query
+            # it separately, add its PV and recompute the house load from the
+            # whole-house balance  P_Load = -(P_Grid + P_Akku + P_PV).
+            pv2_host = (cfg.get("pv2_host") or "").strip()
+            if pv2_host and pv2_host != host.strip():
+                try:
+                    site2 = self._fetch(pv2_host)["Site"]
+                    p_pv += float(site2.get("P_PV") or 0.0)
+                    p_load = -(p_grid + p_akku + p_pv)
+                except Exception as exc:
+                    logging.getLogger("api").warning(
+                        "Fronius 2. Wechselrichter (%s): %s — nutze nur Haupt-PV",
+                        pv2_host, exc)
+
             return {
-                "p_grid": float(site.get("P_Grid") or 0.0),
-                "p_pv":   float(site.get("P_PV")   or 0.0),
-                "p_akku": float(site.get("P_Akku")  or 0.0),
-                "p_load": float(site.get("P_Load")  or 0.0),
+                "p_grid": p_grid,
+                "p_pv":   p_pv,
+                "p_akku": p_akku,
+                "p_load": p_load,
                 "soc":    soc,
             }
         except Exception as exc:

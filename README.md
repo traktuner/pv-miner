@@ -34,7 +34,8 @@ That's it. The script:
 
 Open the Web UI and fill in:
 
-- **Fronius IP** — the GEN24 Plus (the one with the battery, not the Symo)
+- **Fronius IP** — the GEN24 Plus (the hybrid with the battery). Supplies grid, battery, SOC and its own PV.
+- **2. Wechselrichter IP** — optional; a second inverter (e.g. a Symo) that is *not* linked to the hybrid. Its PV is invisible to the hybrid's local API, so pv-miner queries it separately and adds it. Leave empty with a single inverter.
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
 - **Operating mode** — how PV surplus is determined (see below)
@@ -75,7 +76,7 @@ Flapping is suppressed by start/stop hysteresis: a state change is only executed
 
 ## API assumptions
 
-- Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety.
+- Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety. If a second inverter is configured, its `Site.P_PV` is added and the house load is recomputed from the whole-house balance `P_Load = -(P_Grid + P_Akku + P_PV)`.
 - Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, 1 h TTL, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`) and `GET /api/v1/performance/mode` (hashrate target). The only write besides pause/resume is `PUT /api/v1/performance/hashrate-target` — issued solely when you change the hashrate target in the web UI. Power target, autotuning mode and fans are never written.
 
 ## Override buttons

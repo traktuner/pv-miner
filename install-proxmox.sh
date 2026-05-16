@@ -140,7 +140,7 @@ pct exec "$CTID" -- sh -c "wget -qO /opt/pv-miner/pv_miner.py '${RAW}/pv_miner.p
 if ! pct exec "$CTID" -- sh -c 'test -s /data/config.json 2>/dev/null'; then
 pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
 {
-  \"fronius\": { \"host\": \"\", \"poll_interval_seconds\": 30 },
+  \"fronius\": { \"host\": \"\", \"pv2_host\": \"\", \"poll_interval_seconds\": 30 },
   \"miner\":   { \"host\": \"\", \"api_key\": \"\" },
   \"control\": { \"soc_minimum\": 15, \"soc_hysterese\": 5, \"soc_freigabe\": 95,
                 \"soc_start_mining\": 0, \"netz_puffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
