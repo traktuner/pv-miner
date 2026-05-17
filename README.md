@@ -154,13 +154,3 @@ pct exec <CTID> -- tar -C /data -czf - . > pv-miner-backup.tgz
 cat pv-miner-backup.tgz | pct exec <CTID> -- tar -C /data -xzf -
 pct exec <CTID> -- rc-service pv-miner restart
 ```
-
-## Infrastructure
-
-| Component | Model |
-|---|---|
-| Hybrid inverter (with battery) | Fronius GEN24 Plus |
-| String inverter | Fronius Symo GEN24 8.2 |
-| Battery | BYD HVS 25.6 kWh |
-| Miner | Antminer S19j Pro, Braiins OS |
-| Proxmox host | Dell PowerEdge R640 (slpppve01) |

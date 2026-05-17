@@ -2,10 +2,12 @@
 """pv-miner — web-controlled PV surplus mining daemon."""
 
 import json
+import ast
 import hashlib
 import logging
 import logging.handlers
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -776,7 +778,7 @@ def _cache_busted_url(url: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(query)))
 
 
-def update_available() -> tuple[bool, str]:
+def _download_update() -> tuple[bytes | None, str | None, str]:
     try:
         r = _http.get(
             _cache_busted_url(UPDATE_URL),
@@ -784,11 +786,67 @@ def update_available() -> tuple[bool, str]:
             timeout=15,
         )
         r.raise_for_status()
-        remote_hash = _sha256_bytes(r.content)
+        ast.parse(r.content.decode("utf-8"))
+        return r.content, _sha256_bytes(r.content), ""
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+def update_available() -> tuple[bool, str]:
+    try:
+        remote, remote_hash, error = _download_update()
+        if error:
+            return False, error
+        assert remote is not None and remote_hash is not None
         local_hash = _sha256_file(Path(__file__))
         return remote_hash != local_hash, ""
     except Exception as exc:
         return False, str(exc)
+
+
+def _write_update(remote: bytes) -> tuple[str, Path]:
+    bin_path = Path(__file__).resolve()
+    new_path = bin_path.with_suffix(bin_path.suffix + ".new")
+    previous_path = bin_path.with_suffix(bin_path.suffix + ".previous")
+    new_path.write_bytes(remote)
+    shutil.copy2(bin_path, previous_path)
+    os.replace(new_path, bin_path)
+    return _sha256_bytes(remote), previous_path
+
+
+def _start_detached_restart(expected_hash: str, previous_path: Path) -> None:
+    script = Path("/tmp/pv-miner-web-update.sh")
+    script.write_text(f"""#!/bin/sh
+set -eu
+EXPECTED_HASH='{expected_hash}'
+BIN='{Path(__file__).resolve()}'
+PREVIOUS='{previous_path}'
+PORT='{WEB_PORT}'
+LOG='/tmp/pv-miner-web-update.log'
+{{
+  echo "Restarting pv-miner for update $EXPECTED_HASH"
+  sleep 1
+  rc-service pv-miner restart || true
+  for i in $(seq 1 30); do
+    BODY=$(wget -qO- "http://127.0.0.1:$PORT/api/version?u=$(date +%s)" 2>/dev/null || true)
+    echo "$BODY" | grep -q "$EXPECTED_HASH" && {{ echo "Update verified"; exit 0; }}
+    sleep 1
+  done
+  echo "Updated service did not verify; rolling back"
+  cp "$PREVIOUS" "$BIN"
+  rc-service pv-miner restart || true
+  exit 1
+}} >> "$LOG" 2>&1
+""")
+    script.chmod(0o755)
+    subprocess.Popen(
+        [str(script)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
 
 
 def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
@@ -811,6 +869,16 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
     @app.route("/api/status")
     def api_status():
         return jsonify(state.snapshot())
+
+    @app.route("/api/version")
+    def api_version():
+        path = Path(__file__).resolve()
+        return jsonify({
+            "file": str(path),
+            "sha256": _sha256_file(path),
+            "pid": os.getpid(),
+            "update_url": UPDATE_URL,
+        })
 
     @app.route("/api/config", methods=["GET"])
     def api_config_get():
@@ -836,26 +904,24 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
 
     @app.route("/api/update", methods=["POST"])
     def api_update():
-        update_bin = "/usr/local/bin/pv-miner-update"
-        if not Path(update_bin).exists():
-            return jsonify({"error": "pv-miner-update not found (only available in the LXC appliance)"}), 400
-        available, error = update_available()
+        remote, remote_hash, error = _download_update()
         if error:
             return jsonify({"error": f"Update-Prüfung fehlgeschlagen: {error}"}), 502
-        if not available:
+        assert remote is not None and remote_hash is not None
+        local_hash = _sha256_file(Path(__file__))
+        if remote_hash == local_hash:
             logging.getLogger("main").info("Update requested, already current")
             return jsonify({"ok": True, "updated": False})
 
-        def _run():
-            time.sleep(2)  # let the HTTP response reach the browser first
-            try:
-                subprocess.run([update_bin], timeout=60)
-            except Exception as exc:
-                logging.getLogger("main").error("Update failed: %s", exc)
+        try:
+            expected_hash, previous_path = _write_update(remote)
+            _start_detached_restart(expected_hash, previous_path)
+        except Exception as exc:
+            logging.getLogger("main").exception("Update install failed")
+            return jsonify({"error": f"Update konnte nicht installiert werden: {exc}"}), 500
 
-        threading.Thread(target=_run, daemon=True, name="updater").start()
-        logging.getLogger("main").info("Update triggered via web UI")
-        return jsonify({"ok": True, "updated": True})
+        logging.getLogger("main").info("Update installed via web UI: %s", expected_hash)
+        return jsonify({"ok": True, "updated": True, "sha256": expected_hash})
 
     @app.route("/api/override", methods=["POST"])
     def api_override():

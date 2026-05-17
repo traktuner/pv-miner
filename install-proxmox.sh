@@ -184,6 +184,7 @@ set -eu
 URL="${RAW}/pv_miner.py"
 NEW=/opt/pv-miner/pv_miner.py.new
 BIN=/opt/pv-miner/pv_miner.py
+PREVIOUS=/opt/pv-miner/pv_miner.py.previous
 echo "→ Fetching \$URL"
 wget --header='Cache-Control: no-cache' -qO "\$NEW" "\$URL?_=\$(date +%s)"
 python3 -c "import ast; ast.parse(open('\$NEW').read())" || {
@@ -194,15 +195,17 @@ if [ -f "\$BIN" ] && [ "\$(sha256sum "\$NEW" | awk '{print \$1}')" = "\$(sha256s
   echo "✓ Already current"
   exit 0
 fi
-cp "\$BIN" "\${BIN}.previous"
+EXPECTED_HASH=\$(sha256sum "\$NEW" | awk '{print \$1}')
+cp "\$BIN" "\$PREVIOUS"
 mv "\$NEW" "\$BIN"
 rc-service pv-miner restart >/dev/null
-for i in \$(seq 1 15); do
-  wget -q --spider "http://localhost:${WEB_PORT}/api/status" 2>/dev/null && { echo "✓ Update OK"; exit 0; }
+for i in \$(seq 1 30); do
+  BODY=\$(wget -qO- "http://localhost:${WEB_PORT}/api/version?_=\$(date +%s)" 2>/dev/null || true)
+  echo "\$BODY" | grep -q "\$EXPECTED_HASH" && { echo "✓ Update OK"; exit 0; }
   sleep 1
 done
-echo "✗ Service did not come up — rolling back"
-mv "\${BIN}.previous" "\$BIN"
+echo "✗ Updated service did not verify — rolling back"
+cp "\$PREVIOUS" "\$BIN"
 rc-service pv-miner restart >/dev/null
 exit 1
 EOF
