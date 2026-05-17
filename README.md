@@ -32,7 +32,7 @@ That's it. The script:
 
 ## First-time setup
 
-Open the Web UI and fill in:
+Open the Web UI, switch to **Einstellungen**, and fill in:
 
 - **Fronius IP** — the GEN24 Plus (the hybrid with the battery). Supplies grid, battery, SOC and its own PV.
 - **2. Wechselrichter IP** — optional; a second inverter (e.g. a Symo) that is *not* linked to the hybrid. Its PV is invisible to the hybrid's local API, so pv-miner queries it separately and adds it. Leave empty with a single inverter.
@@ -41,6 +41,8 @@ Open the Web UI and fill in:
 - **Miner benötigt** — expected miner draw while starting, default `2800 W`
 - **Max. Akku-Ladeleistung** — reserve for the battery while it is not full, default `11300 W`
 - **Akku gilt als voll ab** — SOC threshold where the battery reserve drops away, default `100%`
+- **Sicherheitspuffer** — extra PV margin, default `200 W`
+- **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
 
 ## Control logic
 
@@ -65,6 +67,8 @@ else:
 ```
 
 Battery discharge pauses the miner immediately. Starting is deliberately slower: after a pause, the start condition must stay true for `start_stable_minutes` (default 5 minutes) before pv-miner starts the miner again. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
+
+The **Live** page shows the current decision, the calculated `required_pv`, house load without miner, battery reserve, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
