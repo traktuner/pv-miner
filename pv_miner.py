@@ -172,7 +172,7 @@ function updateConfigHints(){
   el('h-bcl').innerHTML=`Akku bekommt bis <em>${(b/1000).toFixed(1)} kW</em> Vorrang, solange er nicht voll ist.`;
   el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll.`;
   el('h-buffer').innerHTML=`Zusätzlich <em>${buf} W</em> Reserve gegen Netzbezug/Akkuentladung.`;
-  el('h-abs').innerHTML=`Bei Akku-Entladung über <em>${abs} W</em> wird Auto pausiert.`;
+  el('h-abs').innerHTML=`Bei Akku-Entladung über <em>${abs} W</em> wird die Automatik pausiert.`;
 }
 async function fetchStatus(){
   try{
@@ -606,7 +606,7 @@ class PowerController:
 
         if pf["p_akku"] > discharge_limit:
             return "pause", nums, "Akku entlädt", (
-                f"P_Akku liegt bei {pf['p_akku']:.0f} W. Sobald der Akku entlädt, wird nicht gemint."
+                f"Akku entlädt mit {pf['p_akku']:.0f} W. Miner pausiert."
             )
 
         if pf["p_pv"] >= nums["required_pv_w"]:
