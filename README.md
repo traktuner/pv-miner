@@ -57,7 +57,7 @@ docker run -d \
   ghcr.io/traktuner/pv-miner:latest
 ```
 
-The container listens on port `8080` and stores its config in `/data/config.json`. Put Traefik/OIDC in front of it if you expose it beyond your trusted network.
+The container listens on port `8080` and stores its config in `/data/config.json`; its file log goes to `/data/pv-miner.log`. Put Traefik/OIDC in front of it if you expose it beyond your trusted network.
 
 Docker updates are done by pulling a new image and recreating the container. The Web UI update button is only for the Proxmox LXC install because it uses OpenRC inside the appliance.
 

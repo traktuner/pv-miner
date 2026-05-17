@@ -21,6 +21,7 @@ import requests as _http
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/data/config.json")
 WEB_PORT    = int(os.environ.get("WEB_PORT", "8080"))
+LOG_FILE    = os.environ.get("LOG_FILE", "/var/log/pv-miner.log")
 UPDATE_URL  = os.environ.get(
     "UPDATE_URL",
     "https://raw.githubusercontent.com/traktuner/pv-miner/master/pv_miner.py",
@@ -50,7 +51,7 @@ DEFAULT_CONFIG: dict = {
     },
     "logging": {
         "level":        "INFO",
-        "file":         "/var/log/pv-miner.log",
+        "file":         LOG_FILE,
         "max_bytes":    10485760,
         "backup_count": 3,
     },

@@ -1,6 +1,7 @@
 FROM alpine:3.23
 
 ENV CONFIG_PATH=/data/config.json \
+    LOG_FILE=/data/pv-miner.log \
     WEB_PORT=8080 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
