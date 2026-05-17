@@ -141,12 +141,11 @@ if ! pct exec "$CTID" -- sh -c 'test -s /data/config.json 2>/dev/null'; then
 pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
 {
   \"fronius\": { \"host\": \"\", \"pv2_host\": \"\", \"poll_interval_seconds\": 30 },
-  \"miner\":   { \"host\": \"\", \"api_key\": \"\" },
-  \"control\": { \"soc_minimum\": 15, \"soc_hysterese\": 5, \"soc_freigabe\": 95,
-                \"soc_start_mining\": 0, \"netz_puffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
-                \"pv_schwelle_watt\": 12000, \"hysterese_zyklen\": 2 },
-  \"modes\":   { \"surplus_source\": \"grid\", \"manual_override\": \"auto\" },
-  \"time_rule\": { \"enabled\": false, \"start\": \"18:00\", \"end\": \"07:00\", \"soc_threshold\": 50 },
+  \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"expected_power_watt\": 2800 },
+  \"control\": { \"battery_full_soc\": 100, \"battery_charge_limit_watt\": 11300,
+                \"grid_buffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
+                \"start_stable_minutes\": 5 },
+  \"modes\":   { \"manual_override\": \"auto\" },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
 }
 JSON"
@@ -254,8 +253,8 @@ cat << EOF
 Next steps:
   1. Open Web UI → set Fronius IP and Miner IP
   2. Set Braiins OS root password (leave empty if none)
-  3. Pick an operating mode (grid-export / PV-minus-house / battery-priority)
-  4. Optionally set the hashrate target — it is read live from the miner
+  3. Check "Miner benötigt" (default: 2800 W)
+  4. Leave Auto enabled — the battery has priority
 
 Operations:
   Logs:     pct exec $CTID -- tail -f /var/log/pv-miner.log
