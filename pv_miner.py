@@ -893,6 +893,11 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
 
     @app.route("/api/update", methods=["POST"])
     def api_update():
+        if shutil.which("rc-service") is None:
+            return jsonify({
+                "error": "Web-Update ist nur in der LXC-Installation verfügbar. Docker-Container bitte per neuem Image aktualisieren."
+            }), 400
+
         remote, remote_hash, error = _download_update()
         if error:
             return jsonify({"error": f"Update-Prüfung fehlgeschlagen: {error}"}), 502

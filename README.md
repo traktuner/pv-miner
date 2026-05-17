@@ -1,6 +1,6 @@
 # pv-miner
 
-Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV production and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox — no Home Assistant, no Docker.
+Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV production and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
 
 **Akku first:** pv-miner only lets the miner run when PV production covers the house, the configured battery charging reserve, the configured miner draw and a safety buffer. It does not change the miner's power target, hashrate target, autotuning mode or fan settings — those stay exactly as configured in Braiins OS.
 
@@ -43,6 +43,23 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **Akku gilt als voll ab** — SOC threshold where the battery reserve drops away, default `100%`
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
 - **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
+
+## Docker
+
+GitHub Actions publishes a multi-arch image to GHCR on every push to `master`:
+
+```bash
+docker run -d \
+  --name pv-miner \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v pv-miner-data:/data \
+  ghcr.io/traktuner/pv-miner:latest
+```
+
+The container listens on port `8080` and stores its config in `/data/config.json`. Put Traefik/OIDC in front of it if you expose it beyond your trusted network.
+
+Docker updates are done by pulling a new image and recreating the container. The Web UI update button is only for the Proxmox LXC install because it uses OpenRC inside the appliance.
 
 ## Control logic
 
