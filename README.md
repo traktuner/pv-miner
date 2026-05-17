@@ -38,7 +38,7 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **2. Wechselrichter IP** — optional; a second inverter (e.g. a Symo) that is *not* linked to the hybrid. Its PV is invisible to the hybrid's local API, so pv-miner queries it separately and adds it. Leave empty with a single inverter.
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
-- **Miner benötigt** — expected miner draw while starting, default `2800 W`
+- **Miner benötigt** — expected miner draw while starting/ramping, minimum `2500 W`, default `2800 W`
 - **Max. Akku-Ladeleistung** — reserve for the battery while it is not full, default `11300 W`
 - **Akku gilt als voll ab** — SOC threshold where the battery reserve drops away, default `100%`
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
@@ -140,7 +140,7 @@ The installer bakes an update command into the container:
 pct exec <CTID> -- pv-miner-update
 ```
 
-It downloads the latest `pv_miner.py` from GitHub, validates it's syntactically correct Python, swaps it atomically, restarts the service, and health-checks the web UI within 15 seconds. If the service doesn't come up it automatically rolls back to the previous version. `/data/config.json` is never touched.
+It downloads the latest `pv_miner.py` from GitHub, validates it's syntactically correct Python, swaps it atomically, restarts the service, and verifies within 30 seconds that the running web service reports the expected code hash via `/api/version`. If the updated service doesn't verify it automatically rolls back to the previous version. `/data/config.json` is never touched.
 
 ## Backup / restore
 

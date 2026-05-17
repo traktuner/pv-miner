@@ -141,7 +141,7 @@ HTML_PAGE = """<!DOCTYPE html>
   <section>
     <h3>Akku zuerst</h3>
     <div class="fg">
-      <div class="field"><label>Miner benötigt (W)</label><input id="f-mneed" type="number" min="100" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-mneed">Default 2800 W. Wird genutzt, wenn der Miner noch aus ist.</div></div>
+      <div class="field"><label>Miner benötigt (W)</label><input id="f-mneed" type="number" min="2500" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-mneed">Mindestens 2500 W. Wird genutzt, wenn der Miner noch aus ist oder langsam hochfährt.</div></div>
       <div class="field"><label>Max. Akku-Ladeleistung (W)</label><input id="f-bcl" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-bcl">Default 11300 W. Solange der Akku nicht voll ist, reserviert pv-miner diese Leistung für den Akku.</div></div>
       <div class="field"><label>Akku gilt als voll ab (%)</label><input id="f-full" type="number" min="90" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-full">Bei vollem Akku fällt die 11,3-kW-Reserve weg.</div></div>
       <div class="field"><label>Sicherheitspuffer (W)</label><input id="f-buffer" type="number" min="0" max="5000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-buffer">Zusätzlicher Abstand, damit nicht aus dem Netz oder Akku gezogen wird.</div></div>
@@ -168,7 +168,7 @@ function kw(v){return v==null?'—':(v/1000).toFixed(1)+' kW'}
 function cls(card,kind){card.className='card '+(kind||'')}
 function updateConfigHints(){
   const m=n('f-mneed',2800), b=n('f-bcl',11300), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100);
-  el('h-mneed').innerHTML=`Wenn der Miner aus ist, rechnet pv-miner mit <em>${m} W</em> Startbedarf.`;
+  el('h-mneed').innerHTML=`pv-miner rechnet mit mindestens <em>${Math.max(2500,m)} W</em>. Sobald der Miner real mehr zieht, wird der höhere Wert genutzt.`;
   el('h-bcl').innerHTML=`Akku bekommt bis <em>${(b/1000).toFixed(1)} kW</em> Vorrang, solange er nicht voll ist.`;
   el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll.`;
   el('h-buffer').innerHTML=`Zusätzlich <em>${buf} W</em> Reserve gegen Netzbezug/Akkuentladung.`;
@@ -197,14 +197,14 @@ async function fetchStatus(){
 async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
-    el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=d.miner?.expected_power_watt??2800;
+    el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_limit_watt??11300; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-startmin').value=d.control?.start_stable_minutes??5;
     updateConfigHints();
   }catch(e){}
 }
 async function saveCfg(){
   const msg=el('smsg');
-  const cfg={fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:n('f-mneed',2800)},control:{battery_charge_limit_watt:n('f-bcl',11300),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5)}};
+  const cfg={fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_limit_watt:n('f-bcl',11300),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>msg.textContent='',4000);
@@ -563,20 +563,21 @@ class PowerController:
         self._braiins = braiins
         self._state   = state
         self._log     = logging.getLogger("cycle")
-        self._cur_action = "pause"
-        self._pend_action: str | None = None
-        self._pend_count  = 0
+        self._cur_action: str | None = None
         self._start_since: float | None = None
         self._fronius_err = 0
         self._braiins_err = 0
 
     @staticmethod
-    def _display(action: str) -> str:
+    def _display(action: str | None) -> str:
+        if action not in ("run", "pause"):
+            return "unknown"
         return "mining" if action == "run" else "paused"
 
     @staticmethod
     def _decision_numbers(pf: dict, cfg: dict, miner_w_now: int) -> dict:
-        miner_need = int(cfg["miner"].get("expected_power_watt", 2800))
+        configured_miner_need = max(2500, int(cfg["miner"].get("expected_power_watt", 2800)))
+        miner_need = max(configured_miner_need, max(0, miner_w_now))
         full_soc = float(cfg["control"].get("battery_full_soc", 100))
         battery_limit = int(cfg["control"].get("battery_charge_limit_watt", 11300))
         buffer_w = int(cfg["control"].get("grid_buffer_watt", 200))
@@ -649,7 +650,7 @@ class PowerController:
         return False
 
     def _apply(self, action: str) -> None:
-        if action == self._cur_action:
+        if self._cur_action is not None and action == self._cur_action:
             return
         issued = self._braiins.pause() if action == "pause" else self._braiins.resume()
         verb = "Pause" if action == "pause" else "Start"
@@ -723,7 +724,7 @@ class PowerController:
             **nums,
         )
 
-        if action == self._cur_action:
+        if self._cur_action is not None and action == self._cur_action:
             self._log.info("[cycle] SOC=%.1f%% PV=%.0fW required=%.0fW → no change (%s)",
                            pf["soc"], pf["p_pv"], nums["required_pv_w"], self._cur_action)
             return
@@ -741,8 +742,8 @@ def validate_config_patch(data: dict) -> str | None:
     miner = data.get("miner", {})
 
     try:
-        if not (100 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
-            return "Miner benötigt muss zwischen 100 und 10000 W liegen"
+        if not (2500 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
+            return "Miner benötigt muss zwischen 2500 und 10000 W liegen"
         if not (0 <= int(ctrl.get("battery_charge_limit_watt", 11300)) <= 30000):
             return "Max. Akku-Ladeleistung muss zwischen 0 und 30000 W liegen"
         if not (90 <= float(ctrl.get("battery_full_soc", 100)) <= 100):
@@ -790,18 +791,6 @@ def _download_update() -> tuple[bytes | None, str | None, str]:
         return r.content, _sha256_bytes(r.content), ""
     except Exception as exc:
         return None, None, str(exc)
-
-
-def update_available() -> tuple[bool, str]:
-    try:
-        remote, remote_hash, error = _download_update()
-        if error:
-            return False, error
-        assert remote is not None and remote_hash is not None
-        local_hash = _sha256_file(Path(__file__))
-        return remote_hash != local_hash, ""
-    except Exception as exc:
-        return False, str(exc)
 
 
 def _write_update(remote: bytes) -> tuple[str, Path]:

@@ -128,7 +128,7 @@ else
   echo "WARNING: timezone ${TIMEZONE} not found, keeping Alpine default" >&2
 fi
 python3 -m venv /opt/pv-miner/venv
-/opt/pv-miner/venv/bin/pip install --quiet flask>=3.0.0 requests>=2.31.0
+/opt/pv-miner/venv/bin/pip install --quiet 'flask>=3.0.0' 'requests>=2.31.0'
 touch /var/log/pv-miner.log
 SETUP
 
