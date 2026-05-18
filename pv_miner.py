@@ -780,12 +780,15 @@ class PowerController:
 
         auto_desired, _auto_nums, _auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
         auto_action = self._peek_auto_gate(auto_desired, cfg)
-        auto_preview_title = self._preview_title(auto_action)
-        auto_preview_reason = auto_reason
         if auto_desired == "run" and auto_action == "pause":
-            auto_preview_reason = "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
+            auto_preview_title = "Start wartet"
+            auto_preview_reason = "Startbedingung erfüllt. Beim Umschalten auf Auto startet der Miner erst nach stabiler Sonne."
         elif auto_desired == "pause" and auto_action == "run":
+            auto_preview_title = "Mining bleibt aktiv"
             auto_preview_reason = "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
+        else:
+            auto_preview_title = self._preview_title(auto_action)
+            auto_preview_reason = auto_reason
 
         desired, nums, title, reason = self._decide(pf, cfg, miner_w_now)
         action = desired if override != "auto" else self._auto_gate(desired, cfg)
