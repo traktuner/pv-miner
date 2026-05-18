@@ -119,6 +119,8 @@ HTML_PAGE = """<!DOCTYPE html>
         <button id="ov-run" onclick="setOv('run')">Start erzwingen</button>
       </div>
       <div class="hint" style="margin-top:10px">Auto: Akku hat Vorrang. Pause und Start erzwingen überschreiben die Automatik bis du wieder Auto aktivierst.</div>
+      <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
+      <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
     </section>
 
@@ -192,6 +194,8 @@ async function fetchStatus(){
     el('v-verfuegbar').textContent=fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
     const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
     el('decision-title').textContent=d.decision_title||'Warte auf Daten'; el('decision-reason').textContent=d.decision_reason||'';
+    el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
+    el('auto-preview-reason').textContent=d.auto_preview_reason||'';
     cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
     ['auto','pause','run'].forEach(m=>el('ov-'+m).classList.toggle('active',m===(d.manual_override||'auto')));
     if(d.command_state==='ok'){el('cmdmsg').className='hint';el('cmdmsg').textContent=d.command_msg||'Befehl bestätigt';}
@@ -546,6 +550,8 @@ class StateStore:
             "poll_interval_seconds": None,
             "display_state": "unknown", "manual_override": "auto",
             "decision_title": "Warte auf Daten", "decision_reason": "",
+            "auto_preview_action": None, "auto_preview_title": None,
+            "auto_preview_reason": None,
             "command_state": None, "command_msg": None,
         }
 
@@ -607,16 +613,10 @@ class PowerController:
             "battery_full_soc": full_soc,
         }
 
-    def _decide(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
-        override = cfg.get("modes", {}).get("manual_override", "auto")
+    def _decide_auto(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
         nums = self._decision_numbers(pf, cfg, miner_w_now)
         discharge_limit = int(cfg["control"].get("akku_entlade_sperre_watt", 100))
         grid_tolerance = int(cfg["control"].get("grid_import_tolerance_watt", 300))
-
-        if override == "pause":
-            return "pause", nums, "Pause erzwungen", "Die Automatik ist pausiert."
-        if override == "run":
-            return "run", nums, "Start erzwungen", "Der Miner wird unabhängig von PV/Akku gestartet."
 
         if pf["p_akku"] > discharge_limit:
             return "pause", nums, "Akku entlädt", (
@@ -644,6 +644,40 @@ class PowerController:
                 f"Es fehlen {missing:.0f} W, damit der Akku mit Ladeziel weiterlädt und der Miner zusätzlich startet."
             )
         return "pause", nums, "Zu wenig PV", f"Es fehlen {missing:.0f} W für Haus, Miner und Puffer."
+
+    def _decide(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
+        override = cfg.get("modes", {}).get("manual_override", "auto")
+        auto_action, nums, auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
+
+        if override == "pause":
+            return "pause", nums, "Pause erzwungen", "Die Automatik ist pausiert."
+        if override == "run":
+            return "run", nums, "Start erzwungen", "Der Miner wird unabhängig von PV/Akku gestartet."
+
+        return auto_action, nums, auto_title, auto_reason
+
+    def _peek_auto_gate(self, desired: str, cfg: dict) -> str:
+        """Return what Auto would do now without mutating timers."""
+        now = time.monotonic()
+        if desired == "pause":
+            if self._cur_action != "run":
+                return "pause"
+            wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
+            if self._stop_since is not None and now - self._stop_since >= wait_s:
+                return "pause"
+            return "run"
+
+        if self._cur_action == "run":
+            return "run"
+
+        wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
+        if self._start_since is not None and now - self._start_since >= wait_s:
+            return "run"
+        return "pause"
+
+    @staticmethod
+    def _preview_title(action: str) -> str:
+        return "Mining aktiv" if action == "run" else "Pausieren"
 
     def _auto_gate(self, desired: str, cfg: dict) -> str:
         """Start slowly and stop only after sustained bad conditions."""
@@ -723,6 +757,9 @@ class PowerController:
                 poll_interval_seconds=poll_interval,
                 decision_title="Fronius nicht erreichbar",
                 decision_reason="Ohne Wechselrichterdaten wird im Auto-Modus sicherheitshalber pausiert.",
+                auto_preview_action="pause",
+                auto_preview_title="Pausieren",
+                auto_preview_reason="Ohne Wechselrichterdaten würde Auto sicherheitshalber pausieren.",
             )
             return
 
@@ -735,9 +772,20 @@ class PowerController:
                 miner_power_w=None, verfuegbar_w=max(0, nums["available_w"]), manual_override=override,
                 display_state="unknown", poll_interval_seconds=poll_interval,
                 decision_title="Antminer fehlt", decision_reason="Fronius wird angezeigt; zum Schalten fehlt noch die Antminer-IP.",
+                auto_preview_action=None, auto_preview_title=None,
+                auto_preview_reason="Auto kann ohne Antminer-IP noch nicht schalten.",
                 **nums,
             )
             return
+
+        auto_desired, _auto_nums, _auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
+        auto_action = self._peek_auto_gate(auto_desired, cfg)
+        auto_preview_title = self._preview_title(auto_action)
+        auto_preview_reason = auto_reason
+        if auto_desired == "run" and auto_action == "pause":
+            auto_preview_reason = "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
+        elif auto_desired == "pause" and auto_action == "run":
+            auto_preview_reason = "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
 
         desired, nums, title, reason = self._decide(pf, cfg, miner_w_now)
         action = desired if override != "auto" else self._auto_gate(desired, cfg)
@@ -761,6 +809,8 @@ class PowerController:
             display_state=self._display(action), manual_override=override,
             poll_interval_seconds=poll_interval, decision_title=title, decision_reason=reason,
             start_wait_remaining_s=wait_remaining, stop_wait_remaining_s=stop_wait_remaining,
+            auto_preview_action=auto_action, auto_preview_title=auto_preview_title,
+            auto_preview_reason=auto_preview_reason,
             **nums,
         )
 
