@@ -40,10 +40,12 @@ DEFAULT_CONFIG: dict = {
     },
     "control": {
         "battery_full_soc": 100,
-        "battery_charge_limit_watt": 11300,
+        "battery_charge_target_watt": 2000,
         "grid_buffer_watt": 200,
+        "grid_import_tolerance_watt": 300,
         "akku_entlade_sperre_watt": 100,
         "start_stable_minutes": 5,
+        "stop_stable_minutes": 3,
     },
     "modes": {
         # "auto" | "pause" | "run"
@@ -85,15 +87,15 @@ HTML_PAGE = """<!DOCTYPE html>
       </div>
       <div class="flow">
         <div><span>Haus ohne Miner</span><b id="v-house">—</b></div>
-        <div><span>Akku-Reserve</span><b id="v-batt-reserve">—</b></div>
+        <div><span>Akku-Ladeziel</span><b id="v-batt-reserve">—</b></div>
         <div><span>Miner benötigt</span><b id="v-miner-need">—</b></div>
         <div><span>Puffer</span><b id="v-buffer">—</b></div>
       </div>
     </div>
     <div class="threshold">
-      <div class="hint">Mining erlaubt ab</div>
+      <div class="hint">Start erlaubt ab</div>
       <div class="big" id="v-required">—</div>
-      <div class="sub" id="v-required-sub">PV-Produktion, damit Akku Vorrang behält.</div>
+      <div class="sub" id="v-required-sub">PV-Produktion für Start: Haus + Ladeziel + Miner + Puffer.</div>
     </div>
   </div>
 
@@ -143,11 +145,13 @@ HTML_PAGE = """<!DOCTYPE html>
     <h3>Akku zuerst</h3>
     <div class="fg">
       <div class="field"><label>Miner benötigt (W)</label><input id="f-mneed" type="number" min="2500" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-mneed">Mindestens 2500 W. Wird genutzt, wenn der Miner noch aus ist oder langsam hochfährt.</div></div>
-      <div class="field"><label>Max. Akku-Ladeleistung (W)</label><input id="f-bcl" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-bcl">Default 11300 W. Solange der Akku nicht voll ist, reserviert pv-miner diese Leistung für den Akku.</div></div>
-      <div class="field"><label>Akku gilt als voll ab (%)</label><input id="f-full" type="number" min="90" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-full">Bei vollem Akku fällt die 11,3-kW-Reserve weg.</div></div>
+      <div class="field"><label>Akku-Ladeziel (W)</label><input id="f-bcl" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-bcl">Default 2000 W. Auto startet nur, wenn der Akku nach dem Miner voraussichtlich noch mindestens so lädt.</div></div>
+      <div class="field"><label>Akku gilt als voll ab (%)</label><input id="f-full" type="number" min="90" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-full">Bei vollem Akku fällt das Ladeziel weg.</div></div>
       <div class="field"><label>Sicherheitspuffer (W)</label><input id="f-buffer" type="number" min="0" max="5000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-buffer">Zusätzlicher Abstand, damit nicht aus dem Netz oder Akku gezogen wird.</div></div>
-      <div class="field"><label>Akku-Entlade-Sperre (W)</label><input id="f-abs" type="number" min="0" max="2000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-abs">Wenn P_Akku darüber liegt, wird pausiert.</div></div>
+      <div class="field"><label>Akku-Entlade-Sperre (W)</label><input id="f-abs" type="number" min="0" max="2000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-abs">Wenn P_Akku darüber liegt, startet der Stop-Timer.</div></div>
+      <div class="field"><label>Netzbezug tolerieren (W)</label><input id="f-gridtol" type="number" min="0" max="5000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-gridtol">Kurze Lastspitzen werden toleriert. Erst dauerhafter Netzbezug darüber stoppt den Miner.</div></div>
       <div class="field"><label>Start erst nach stabiler Sonne (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Nach einer Pause startet der Miner erst wieder, wenn die Startbedingung so lange stabil erfüllt ist.</div></div>
+      <div class="field"><label>Stop erst nach Lastspitze (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Wenn Akku entlädt oder Netzbezug zu hoch ist, wartet Auto so lange, bevor pausiert wird.</div></div>
       <div class="field"><label>Abfrage-Intervall (Sekunden)</label><input id="f-pi" type="number" min="10" max="300"><div class="hint">Wie oft Fronius und Miner abgefragt werden.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
@@ -168,12 +172,13 @@ function absw(v){return v==null?'—':Math.round(Math.abs(v))+' W'}
 function kw(v){return v==null?'—':(v/1000).toFixed(1)+' kW'}
 function cls(card,kind){card.className='card '+(kind||'')}
 function updateConfigHints(){
-  const m=n('f-mneed',2800), b=n('f-bcl',11300), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100);
+  const m=n('f-mneed',2800), b=n('f-bcl',2000), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100), gridtol=n('f-gridtol',300);
   el('h-mneed').innerHTML=`pv-miner rechnet mit mindestens <em>${Math.max(2500,m)} W</em>. Sobald der Miner real mehr zieht, wird der höhere Wert genutzt.`;
-  el('h-bcl').innerHTML=`Akku bekommt bis <em>${(b/1000).toFixed(1)} kW</em> Vorrang, solange er nicht voll ist.`;
-  el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll.`;
+  el('h-bcl').innerHTML=`Auto startet nur, wenn der Akku nach Miner und Haus noch etwa <em>${(b/1000).toFixed(1)} kW</em> laden kann.`;
+  el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll; dann reicht Haus + Miner + Puffer.`;
   el('h-buffer').innerHTML=`Zusätzlich <em>${buf} W</em> Reserve gegen Netzbezug/Akkuentladung.`;
-  el('h-abs').innerHTML=`Bei Akku-Entladung über <em>${abs} W</em> wird die Automatik pausiert.`;
+  el('h-abs').innerHTML=`Bei Akku-Entladung über <em>${abs} W</em> startet der Stop-Timer.`;
+  el('h-gridtol').innerHTML=`Bei Netzbezug über <em>${gridtol} W</em> startet der Stop-Timer.`;
 }
 async function fetchStatus(){
   try{
@@ -182,8 +187,8 @@ async function fetchStatus(){
     el('v-ppv').textContent=fw(d.p_pv); el('v-pload').textContent=absw(d.p_load); el('v-power').textContent=fw(d.miner_power_w);
     el('l-pgrid').textContent=d.p_grid==null?'Netz':(d.p_grid<0?'Netz Einspeisung':(d.p_grid>0?'Netz Bezug':'Netz neutral')); el('v-pgrid').textContent=absw(d.p_grid);
     el('l-pakku').textContent=d.p_akku==null?'Batterie':(d.p_akku>0?'Batterie entlädt':(d.p_akku<0?'Batterie lädt':'Batterie neutral')); el('v-pakku').textContent=absw(d.p_akku);
-    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fw(d.battery_reserve_w); el('v-miner-need').textContent=fw(d.miner_needed_w); el('v-buffer').textContent=fw(d.grid_buffer_watt);
-    el('v-required').textContent=kw(d.required_pv_w); el('v-required-sub').textContent=d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: nur Haus + Miner + Puffer nötig.':'Akku lädt zuerst: Haus + Akku-Ladelimit + Miner + Puffer.';
+    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fw(d.battery_charge_target_w); el('v-miner-need').textContent=fw(d.miner_needed_w); el('v-buffer').textContent=fw(d.grid_buffer_watt);
+    el('v-required').textContent=kw(d.required_pv_w); el('v-required-sub').textContent=d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: Haus + Miner + Puffer reichen für den Start.':'Akku lädt zuerst: Start braucht Haus + Ladeziel + Miner + Puffer.';
     el('v-verfuegbar').textContent=fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
     const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
     el('decision-title').textContent=d.decision_title||'Warte auf Daten'; el('decision-reason').textContent=d.decision_reason||'';
@@ -199,13 +204,13 @@ async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
-    el('f-bcl').value=d.control?.battery_charge_limit_watt??11300; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-startmin').value=d.control?.start_stable_minutes??5;
+    el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
     updateConfigHints();
   }catch(e){}
 }
 async function saveCfg(){
   const msg=el('smsg');
-  const cfg={fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_limit_watt:n('f-bcl',11300),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5)}};
+  const cfg={fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>msg.textContent='',4000);
@@ -532,11 +537,12 @@ class StateStore:
         self._d: dict = {
             "soc": None, "p_grid": None, "p_pv": None, "p_akku": None,
             "p_load": None, "house_without_miner_w": None,
-            "battery_reserve_w": None, "miner_needed_w": None,
+            "battery_charge_target_w": None, "battery_charge_now_w": None,
+            "battery_charge_margin_w": None, "miner_needed_w": None,
             "grid_buffer_watt": None, "required_pv_w": None,
             "available_w": None, "verfuegbar_w": None,
             "miner_power_w": None, "battery_full_soc": None,
-            "start_wait_remaining_s": None,
+            "start_wait_remaining_s": None, "stop_wait_remaining_s": None,
             "poll_interval_seconds": None,
             "display_state": "unknown", "manual_override": "auto",
             "decision_title": "Warte auf Daten", "decision_reason": "",
@@ -566,6 +572,7 @@ class PowerController:
         self._log     = logging.getLogger("cycle")
         self._cur_action: str | None = None
         self._start_since: float | None = None
+        self._stop_since: float | None = None
         self._fronius_err = 0
         self._braiins_err = 0
 
@@ -580,15 +587,19 @@ class PowerController:
         configured_miner_need = max(2500, int(cfg["miner"].get("expected_power_watt", 2800)))
         miner_need = max(configured_miner_need, max(0, miner_w_now))
         full_soc = float(cfg["control"].get("battery_full_soc", 100))
-        battery_limit = int(cfg["control"].get("battery_charge_limit_watt", 11300))
+        battery_target = int(cfg["control"].get("battery_charge_target_watt", 2000))
         buffer_w = int(cfg["control"].get("grid_buffer_watt", 200))
         house_without_miner = max(0.0, abs(pf.get("p_load", 0.0)) - max(0, miner_w_now))
-        battery_reserve = 0 if pf["soc"] >= full_soc else battery_limit
-        required_pv = house_without_miner + battery_reserve + miner_need + buffer_w
+        battery_target_active = 0 if pf["soc"] >= full_soc else battery_target
+        battery_charge_now = max(0.0, -pf.get("p_akku", 0.0))
+        battery_charge_margin = battery_charge_now - battery_target_active
+        required_pv = house_without_miner + battery_target_active + miner_need + buffer_w
         available = pf["p_pv"] - required_pv
         return {
             "house_without_miner_w": house_without_miner,
-            "battery_reserve_w": battery_reserve,
+            "battery_charge_target_w": battery_target_active,
+            "battery_charge_now_w": battery_charge_now,
+            "battery_charge_margin_w": battery_charge_margin,
             "miner_needed_w": miner_need,
             "grid_buffer_watt": buffer_w,
             "required_pv_w": required_pv,
@@ -600,6 +611,7 @@ class PowerController:
         override = cfg.get("modes", {}).get("manual_override", "auto")
         nums = self._decision_numbers(pf, cfg, miner_w_now)
         discharge_limit = int(cfg["control"].get("akku_entlade_sperre_watt", 100))
+        grid_tolerance = int(cfg["control"].get("grid_import_tolerance_watt", 300))
 
         if override == "pause":
             return "pause", nums, "Pause erzwungen", "Die Automatik ist pausiert."
@@ -608,32 +620,53 @@ class PowerController:
 
         if pf["p_akku"] > discharge_limit:
             return "pause", nums, "Akku entlädt", (
-                f"Akku entlädt mit {pf['p_akku']:.0f} W. Miner pausiert."
+                f"Akku entlädt mit {pf['p_akku']:.0f} W. Auto pausiert erst, wenn das länger anhält."
+            )
+
+        if pf["p_grid"] > grid_tolerance:
+            return "pause", nums, "Netzbezug zu hoch", (
+                f"Netzbezug liegt bei {pf['p_grid']:.0f} W. Auto pausiert erst, wenn das länger anhält."
             )
 
         if pf["p_pv"] >= nums["required_pv_w"]:
-            if nums["battery_reserve_w"] > 0:
-                return "run", nums, "Mining erlaubt", "PV reicht für Haus, volle Akku-Ladeleistung, Miner und Puffer."
+            if nums["battery_charge_target_w"] > 0:
+                return "run", nums, "Mining erlaubt", "PV reicht für Haus, Akku-Ladeziel, Miner und Puffer."
             return "run", nums, "Mining erlaubt", "Akku ist voll; PV reicht für Haus, Miner und Puffer."
 
         missing = nums["required_pv_w"] - pf["p_pv"]
-        if nums["battery_reserve_w"] > 0:
+        if self._cur_action == "run":
+            return "run", nums, "Mining läuft", (
+                "PV liegt unter der Startschwelle, aber Akku entlädt nicht und Netzbezug bleibt im Rahmen."
+            )
+
+        if nums["battery_charge_target_w"] > 0:
             return "pause", nums, "Akku lädt zuerst", (
-                f"Es fehlen {missing:.0f} W, damit der Akku mit voller Leistung laden kann und der Miner zusätzlich läuft."
+                f"Es fehlen {missing:.0f} W, damit der Akku mit Ladeziel weiterlädt und der Miner zusätzlich startet."
             )
         return "pause", nums, "Zu wenig PV", f"Es fehlen {missing:.0f} W für Haus, Miner und Puffer."
 
     def _auto_gate(self, desired: str, cfg: dict) -> str:
-        """Pause immediately; start only after stable sun for N minutes."""
+        """Start slowly and stop only after sustained bad conditions."""
+        now = time.monotonic()
         if desired == "pause":
             self._start_since = None
-            return "pause"
+            if self._cur_action != "run":
+                self._stop_since = None
+                return "pause"
+            wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
+            if self._stop_since is None:
+                self._stop_since = now
+            if now - self._stop_since >= wait_s:
+                self._stop_since = None
+                return "pause"
+            return "run"
+
+        self._stop_since = None
         if self._cur_action == "run":
             self._start_since = None
             return "run"
 
         wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
-        now = time.monotonic()
         if self._start_since is None:
             self._start_since = now
         if now - self._start_since >= wait_s:
@@ -709,11 +742,17 @@ class PowerController:
         desired, nums, title, reason = self._decide(pf, cfg, miner_w_now)
         action = desired if override != "auto" else self._auto_gate(desired, cfg)
         wait_remaining = None
+        stop_wait_remaining = None
         if override == "auto" and desired == "run" and action == "pause" and self._start_since is not None:
             wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
             title = "Warte auf stabile Sonne"
             reason = f"Startbedingung erfüllt. Miner startet in {wait_remaining // 60}:{wait_remaining % 60:02d}, wenn genug PV stabil bleibt."
+        if override == "auto" and desired == "pause" and action == "run" and self._stop_since is not None:
+            wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
+            stop_wait_remaining = max(0, int(wait_s - (time.monotonic() - self._stop_since)))
+            title = "Lastspitze wird toleriert"
+            reason = f"Miner läuft weiter. Auto pausiert erst in {stop_wait_remaining // 60}:{stop_wait_remaining % 60:02d}, wenn der Zustand anhält."
 
         self._state.update(
             soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
@@ -721,7 +760,7 @@ class PowerController:
             verfuegbar_w=max(0, nums["available_w"]),
             display_state=self._display(action), manual_override=override,
             poll_interval_seconds=poll_interval, decision_title=title, decision_reason=reason,
-            start_wait_remaining_s=wait_remaining,
+            start_wait_remaining_s=wait_remaining, stop_wait_remaining_s=stop_wait_remaining,
             **nums,
         )
 
@@ -745,16 +784,20 @@ def validate_config_patch(data: dict) -> str | None:
     try:
         if not (2500 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
             return "Miner benötigt muss zwischen 2500 und 10000 W liegen"
-        if not (0 <= int(ctrl.get("battery_charge_limit_watt", 11300)) <= 30000):
-            return "Max. Akku-Ladeleistung muss zwischen 0 und 30000 W liegen"
+        if not (0 <= int(ctrl.get("battery_charge_target_watt", 2000)) <= 30000):
+            return "Akku-Ladeziel muss zwischen 0 und 30000 W liegen"
         if not (90 <= float(ctrl.get("battery_full_soc", 100)) <= 100):
             return "Akku voll ab muss zwischen 90 und 100% liegen"
         if not (0 <= int(ctrl.get("grid_buffer_watt", 200)) <= 5000):
             return "Sicherheitspuffer muss zwischen 0 und 5000 W liegen"
+        if not (0 <= int(ctrl.get("grid_import_tolerance_watt", 300)) <= 5000):
+            return "Netzbezug tolerieren muss zwischen 0 und 5000 W liegen"
         if not (0 <= int(ctrl.get("akku_entlade_sperre_watt", 100)) <= 2000):
             return "Akku-Entlade-Sperre muss zwischen 0 und 2000 W liegen"
         if not (1 <= int(ctrl.get("start_stable_minutes", 5)) <= 60):
             return "Start-Wartezeit muss zwischen 1 und 60 Minuten liegen"
+        if not (1 <= int(ctrl.get("stop_stable_minutes", 3)) <= 60):
+            return "Stop-Wartezeit muss zwischen 1 und 60 Minuten liegen"
     except (TypeError, ValueError):
         return "Numerische Konfigurationswerte sind ungültig"
 

@@ -142,9 +142,10 @@ pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
 {
   \"fronius\": { \"host\": \"\", \"pv2_host\": \"\", \"poll_interval_seconds\": 30 },
   \"miner\":   { \"host\": \"\", \"api_key\": \"\", \"expected_power_watt\": 2800 },
-  \"control\": { \"battery_full_soc\": 100, \"battery_charge_limit_watt\": 11300,
-                \"grid_buffer_watt\": 200, \"akku_entlade_sperre_watt\": 100,
-                \"start_stable_minutes\": 5 },
+  \"control\": { \"battery_full_soc\": 100, \"battery_charge_target_watt\": 2000,
+                \"grid_buffer_watt\": 200, \"grid_import_tolerance_watt\": 300,
+                \"akku_entlade_sperre_watt\": 100, \"start_stable_minutes\": 5,
+                \"stop_stable_minutes\": 3 },
   \"modes\":   { \"manual_override\": \"auto\" },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
 }

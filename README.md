@@ -39,10 +39,11 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
 - **Miner benötigt** — expected miner draw while starting/ramping, minimum `2500 W`, default `2800 W`
-- **Max. Akku-Ladeleistung** — reserve for the battery while it is not full, default `11300 W`
+- **Akku-Ladeziel** — minimum charge power the battery should still get before the miner starts, default `2000 W`
 - **Akku gilt als voll ab** — SOC threshold where the battery reserve drops away, default `100%`
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
 - **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
+- **Stop erst nach Lastspitze** — delay before pausing on sustained battery discharge or grid import, default `3 min`
 
 ## Docker
 
@@ -69,23 +70,24 @@ The miner is either **running** or **paused**. There is only one automatic mode.
 house_without_miner = abs(P_Load) - current_miner_power
 
 if battery is not full:
-  required_pv = house_without_miner + battery_charge_limit + expected_miner_power + buffer
+  start_required_pv = house_without_miner + battery_charge_target + expected_miner_power + buffer
 
 if battery is full:
-  required_pv = house_without_miner + expected_miner_power + buffer
+  start_required_pv = house_without_miner + expected_miner_power + buffer
 
-if P_Akku > discharge_limit:
-  pause
-
-if P_PV >= required_pv:
+if miner is stopped and P_PV >= start_required_pv for start_stable_minutes:
   run
-else:
+
+if miner is running and battery is not discharging and grid import stays below tolerance:
+  run
+
+if battery discharge or grid import stays too high for stop_stable_minutes:
   pause
 ```
 
-Battery discharge pauses the miner immediately. Starting is deliberately slower: after a pause, the start condition must stay true for `start_stable_minutes` (default 5 minutes) before pv-miner starts the miner again. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
+Starting is deliberately conservative: after a pause, the start condition must stay true for `start_stable_minutes` (default 5 minutes) before pv-miner starts the miner again. Stopping is deliberately less nervous: short heat-pump or household load spikes are tolerated, and pv-miner pauses only if battery discharge or grid import remains too high for `stop_stable_minutes` (default 3 minutes). Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
-The **Live** page shows the current decision, the calculated `required_pv`, house load without miner, battery reserve, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
+The **Live** page shows the current decision, the calculated start threshold, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
