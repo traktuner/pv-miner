@@ -105,14 +105,14 @@ if Fronius is temporarily unavailable:
   keep mining and hold the last known summer target
 ```
 
-Summer target writes are idempotent: pv-miner reads the current Braiins OS target first and only sends `PUT /performance/hashrate-target` or `PUT /performance/power-target` when the target really differs.
+Summer target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode` and verifies the active mode before reporting success. If only the value changes within the same type, it sends `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target.
 
 The **Live** page shows the current decision, the calculated start threshold or active summer target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety. If a second inverter is configured, its `Site.P_PV` is added and the house load is recomputed from the whole-house balance `P_Load = -(P_Grid + P_Akku + P_PV)`.
-- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads performance targets from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, and writes summer-mode targets with `PUT /api/v1/performance/hashrate-target` and `PUT /api/v1/performance/power-target`. Autotuning mode and fans are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads performance targets from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, switches summer target type with `PUT /api/v1/performance/mode`, and writes same-type target changes with `PUT /api/v1/performance/hashrate-target` / `PUT /api/v1/performance/power-target`. Autotuning mode and fans are never written.
 
 ## Override buttons
 

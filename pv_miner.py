@@ -604,6 +604,65 @@ class BraiinsAPI:
                 return found
         return None
 
+    @staticmethod
+    def _find_target_kind(value) -> str | None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                key_l = str(key).lower()
+                if key_l in ("powertarget", "powertargetmodestate"):
+                    return "power"
+                if key_l in ("hashratetarget", "hashratetargetmodestate"):
+                    return "hashrate"
+                found = BraiinsAPI._find_target_kind(nested)
+                if found is not None:
+                    return found
+        elif isinstance(value, list):
+            for nested in value:
+                found = BraiinsAPI._find_target_kind(nested)
+                if found is not None:
+                    return found
+        return None
+
+    @classmethod
+    def _target_state_from_json(cls, value) -> dict:
+        return {
+            "target_kind": cls._find_target_kind(value),
+            "hashrate_target_th": cls._find_terahash(value),
+            "power_target_w": cls._find_power_target_watt(value),
+        }
+
+    @staticmethod
+    def _target_payload(kind: str, target: float | int) -> dict:
+        if kind == "power":
+            return {
+                "tunermode": {
+                    "target": {
+                        "powertarget": {
+                            "power_target": {"watt": int(target)}
+                        }
+                    }
+                }
+            }
+        return {
+            "tunermode": {
+                "target": {
+                    "hashratetarget": {
+                        "hashrate_target": {"terahash_per_second": float(target)}
+                    }
+                }
+            }
+        }
+
+    @staticmethod
+    def _target_matches(state: dict | None, kind: str, target: float | int) -> bool:
+        if not state or state.get("target_kind") != kind:
+            return False
+        if kind == "power":
+            current = state.get("power_target_w")
+            return current is not None and abs(int(current) - int(target)) < 10
+        current = state.get("hashrate_target_th")
+        return current is not None and abs(float(current) - float(target)) < 0.1
+
     def get_hashrate_target(self) -> float | None:
         for path in ("/performance/mode", "/performance/tuner-state"):
             r = self._request("GET", path)
@@ -616,6 +675,19 @@ class BraiinsAPI:
             except Exception as exc:
                 self._log.warning("Braiins %s parse: %s", path, exc)
         return None
+
+    def get_performance_target_state(self) -> dict:
+        for path in ("/performance/mode", "/performance/tuner-state"):
+            r = self._request("GET", path)
+            if r is None:
+                continue
+            try:
+                state = self._target_state_from_json(r.json())
+                if state.get("target_kind") is not None:
+                    return state
+            except Exception as exc:
+                self._log.warning("Braiins %s target parse: %s", path, exc)
+        return {"target_kind": None, "hashrate_target_th": None, "power_target_w": None}
 
     def get_power_target(self) -> int | None:
         for path in ("/performance/mode", "/performance/tuner-state"):
@@ -656,6 +728,22 @@ class BraiinsAPI:
             self._log.warning("set_power_target failed: %s", r.text if r is not None else "no response")
         return ok
 
+    def set_performance_mode_target(self, kind: str, target: float | int) -> bool:
+        r = self._request("PUT", "/performance/mode", json=self._target_payload(kind, target))
+        ok = self._ok(r)
+        if ok:
+            self._log.info("performance mode set to %s target %s", kind, target)
+        else:
+            self._log.warning("set_performance_mode_target failed: %s", r.text if r is not None else "no response")
+        return ok
+
+    def verify_target(self, kind: str, target: float | int) -> bool:
+        for _ in range(4):
+            time.sleep(1)
+            if self._target_matches(self.get_performance_target_state(), kind, target):
+                return True
+        return False
+
     def get_status(self) -> dict | None:
         """Return {power_watt, paused, hashrate_target_th, power_target_w} or None.
 
@@ -673,12 +761,13 @@ class BraiinsAPI:
             self._log.warning("Braiins miner/details parse: %s", exc)
             return None
 
+        target_state = self.get_performance_target_state()
+
         if status != self._STATUS_MINING:
             return {
                 "power_watt": 0,
                 "paused": True,
-                "hashrate_target_th": self.get_hashrate_target(),
-                "power_target_w": self.get_power_target(),
+                **target_state,
             }
 
         watt = 0
@@ -692,8 +781,7 @@ class BraiinsAPI:
         return {
             "power_watt": watt,
             "paused": False,
-            "hashrate_target_th": self.get_hashrate_target(),
-            "power_target_w": self.get_power_target(),
+            **target_state,
         }
 
 
@@ -1040,33 +1128,53 @@ class PowerController:
             return False
 
     def _apply_desired(self, desired: DesiredState, current_hashrate_th: float | None,
-                       current_power_target_w: int | None) -> None:
+                       current_power_target_w: int | None, current_target_kind: str | None) -> None:
         before_err = self._braiins_err
         action_ok = self._apply(desired.action)
         if desired.action != "run" or (desired.hashrate_target_th is None and desired.power_target_w is None):
             return
         if not action_ok:
             return
-        if desired.power_target_w is not None:
-            if current_power_target_w is not None and abs(int(current_power_target_w) - desired.power_target_w) < 10:
-                return
-            if self._braiins.set_power_target(desired.power_target_w):
-                self._braiins_err = 0
-                self._state.update(command_state="ok", command_msg=f"Power Target {desired.power_target_w} W gesetzt")
-                return
-            self._braiins_err = max(self._braiins_err, before_err) + 1
-            self._state.update(command_state="failed", command_msg="Power Target wurde vom Miner nicht angenommen")
+
+        desired_kind = desired.target_kind
+        desired_value = desired.power_target_w if desired_kind == "power" else desired.hashrate_target_th
+        if desired_kind is None or desired_value is None:
             return
 
-        if self._same_hashrate(current_hashrate_th, desired.hashrate_target_th):
+        current_state = {
+            "target_kind": current_target_kind,
+            "hashrate_target_th": current_hashrate_th,
+            "power_target_w": current_power_target_w,
+        }
+        if BraiinsAPI._target_matches(current_state, desired_kind, desired_value):
             return
-        if self._braiins.set_hashrate_target(desired.hashrate_target_th):
+
+        if current_target_kind != desired_kind:
+            if self._braiins.set_performance_mode_target(desired_kind, desired_value) and self._braiins.verify_target(desired_kind, desired_value):
+                self._braiins_err = 0
+                label = f"{desired.power_target_w} W" if desired_kind == "power" else f"{desired.hashrate_target_th:.1f} TH/s"
+                self._state.update(command_state="ok", command_msg=f"{'Power' if desired_kind == 'power' else 'Hashrate'} Target {label} aktiv")
+                return
+            self._braiins_err = max(self._braiins_err, before_err) + 1
+            self._state.update(command_state="failed", command_msg="Braiins Zielmodus wurde nicht bestätigt")
+            return
+
+        if desired.power_target_w is not None:
+            if self._braiins.set_power_target(desired.power_target_w) and self._braiins.verify_target("power", desired.power_target_w):
+                self._braiins_err = 0
+                self._state.update(command_state="ok", command_msg=f"Power Target {desired.power_target_w} W aktiv")
+                return
+            self._braiins_err = max(self._braiins_err, before_err) + 1
+            self._state.update(command_state="failed", command_msg="Power Target wurde vom Miner nicht bestätigt")
+            return
+
+        if self._braiins.set_hashrate_target(desired.hashrate_target_th) and self._braiins.verify_target("hashrate", desired.hashrate_target_th):
             self._braiins_err = 0
-            msg = f"Hashrate-Ziel {desired.hashrate_target_th:.1f} TH/s gesetzt"
+            msg = f"Hashrate-Ziel {desired.hashrate_target_th:.1f} TH/s aktiv"
             self._state.update(command_state="ok", command_msg=msg)
         else:
             self._braiins_err = max(self._braiins_err, before_err) + 1
-            self._state.update(command_state="failed", command_msg="Hashrate-Ziel wurde vom Miner nicht angenommen")
+            self._state.update(command_state="failed", command_msg="Hashrate-Ziel wurde vom Miner nicht bestätigt")
 
     def run_cycle(self) -> None:
         cfg = self._cfg.get()
@@ -1079,6 +1187,7 @@ class PowerController:
         miner_w_now = miner_st["power_watt"] if miner_st else 0
         current_hashrate_th = miner_st.get("hashrate_target_th") if miner_st else None
         current_power_target_w = miner_st.get("power_target_w") if miner_st else None
+        current_target_kind = miner_st.get("target_kind") if miner_st else None
         if miner_st is not None:
             self._cur_action = "pause" if miner_st["paused"] else "run"
 
@@ -1106,7 +1215,7 @@ class PowerController:
                     auto_preview_reason=desired_state.reason,
                     **desired_state.nums,
                 )
-                self._apply_desired(desired_state, current_hashrate_th, current_power_target_w)
+                self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
                 return
             if self._fronius_err >= 3 and miner_host and self._cur_action != "pause" and override == "auto":
                 self._apply("pause")
@@ -1184,7 +1293,7 @@ class PowerController:
                            pf["p_pv"], desired_state.profile, desired_state.target_kind,
                            desired_state.hashrate_target_th or desired_state.power_target_w,
                            desired_state.action.upper())
-            self._apply_desired(desired_state, current_hashrate_th, current_power_target_w)
+            self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
             return
 
         auto_desired, _auto_nums, _auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
