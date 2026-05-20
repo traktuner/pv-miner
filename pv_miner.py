@@ -222,7 +222,7 @@ function setMode(mode){
 }
 function updateConfigHints(){
   const m=n('f-mneed',2800), b=n('f-bcl',2000), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100), gridtol=n('f-gridtol',300);
-  const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=n('f-loww',945), sw=n('f-switchmin',5);
+  const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=Math.max(945,n('f-loww',945)), sw=n('f-switchmin',5);
   el('h-mneed').innerHTML=`pv-miner rechnet mit mindestens <em>${Math.max(2500,m)} W</em>. Sobald der Miner real mehr zieht, wird der höhere Wert genutzt.`;
   el('h-bcl').innerHTML=`Auto startet nur, wenn der Akku nach Miner und Haus noch etwa <em>${(b/1000).toFixed(1)} kW</em> laden kann.`;
   el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll; dann reicht Haus + Miner + Puffer.`;
@@ -232,7 +232,7 @@ function updateConfigHints(){
   el('h-daypv').innerHTML=`Ab <em>${(day/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf High gewechselt.`;
   el('h-nightpv').innerHTML=`Unter <em>${(night/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf Low gewechselt.`;
   el('h-highth').innerHTML=`Tag-Ziel: <em>${hi.toFixed(1)} TH/s</em>.`;
-  el('h-loww').innerHTML=`Nacht-Ziel: <em>${loww} W</em>.`;
+  el('h-loww').innerHTML=`Nacht-Ziel: <em>${loww} W</em>. Unter 945 W wird automatisch auf 945 W gesetzt.`;
   el('h-switchmin').innerHTML=`Wechsel erst nach <em>${sw} Minuten</em> stabiler PV.`;
 }
 async function fetchStatus(){
@@ -267,13 +267,14 @@ async function fetchCfg(){
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
-    el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=d.summer?.low_power_watt??945; el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
+    el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=Math.max(945,d.summer?.low_power_watt??945); el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
     updateConfigHints();
   }catch(e){}
 }
 async function saveCfg(){
   const msg=activeMode==='summer_24h'?el('smsg2'):el('smsg');
-  const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:n('f-loww',945),switch_stable_minutes:n('f-switchmin',5)}};
+  const loww=Math.max(945,n('f-loww',945)); el('f-loww').value=loww;
+  const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:loww,switch_stable_minutes:n('f-switchmin',5)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
@@ -977,7 +978,7 @@ class PowerController:
     def _summer_target_for_profile(self, cfg: dict, profile: str) -> tuple[str, float | int]:
         summer = cfg.get("summer", {})
         high_th = float(summer.get("high_hashrate_th", 110))
-        low_w = int(summer.get("low_power_watt", 945))
+        low_w = max(945, int(summer.get("low_power_watt", 945)))
         return ("hashrate", high_th) if profile == "day" else ("power", low_w)
 
     @staticmethod
@@ -1400,6 +1401,14 @@ def validate_config_patch(data: dict) -> str | None:
     return None
 
 
+def normalize_config_patch(data: dict) -> None:
+    summer = data.setdefault("summer", {})
+    try:
+        summer["low_power_watt"] = max(945, int(summer.get("low_power_watt", 945)))
+    except (TypeError, ValueError):
+        summer["low_power_watt"] = 945
+
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -1525,6 +1534,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
             return jsonify({"error": "Fronius GEN24 Plus — IP darf nicht leer sein"}), 400
         if data.get("miner", {}).get("api_key", "").startswith("••"):
             data.setdefault("miner", {})["api_key"] = cfg_manager.get()["miner"].get("api_key", "")
+        normalize_config_patch(data)
         error = validate_config_patch(data)
         if error:
             return jsonify({"error": error}), 400
