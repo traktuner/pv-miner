@@ -186,7 +186,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="field"><label>Tag ab PV (W)</label><input id="f-daypv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-daypv">Ab dieser PV-Leistung wird nach stabiler Zeit auf High gestellt.</div></div>
       <div class="field"><label>Nacht unter PV (W)</label><input id="f-nightpv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-nightpv">Unter dieser PV-Leistung wird nach stabiler Zeit auf Low gestellt.</div></div>
       <div class="field"><label>Tag Hashrate Target (TH/s)</label><input id="f-highth" type="number" min="1" max="200" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-highth">Hashrate Target für Tag/Sonne.</div></div>
-      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
+      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="1" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
       <div class="field"><label>Wechsel erst nach stabil (Minuten)</label><input id="f-switchmin" type="number" min="1" max="120" oninput="updateConfigHints()"><div class="hint" id="h-switchmin">PV muss so lange stabil über/unter der Schwelle bleiben.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg2"></span></div>
@@ -592,6 +592,11 @@ class BraiinsAPI:
                         return found
             return None
 
+        if "watt" in value:
+            try:
+                return int(value["watt"])
+            except (TypeError, ValueError):
+                return None
         for key in ("current_target", "target", "power_target"):
             nested = value.get(key)
             if isinstance(nested, dict) and "watt" in nested:
@@ -712,6 +717,12 @@ class BraiinsAPI:
         ok = self._ok(r)
         if ok:
             self._log.info("hashrate target set to %.1f TH/s", terahash)
+            try:
+                accepted = self._find_terahash(r.json())
+                if accepted is not None and abs(float(accepted) - float(terahash)) >= 0.1:
+                    self._log.warning("Braiins returned hashrate target %.1f TH/s after requesting %.1f TH/s", accepted, terahash)
+            except Exception:
+                pass
         else:
             self._log.warning("set_hashrate_target failed: %s", r.text if r is not None else "no response")
         return ok
@@ -725,6 +736,12 @@ class BraiinsAPI:
         ok = self._ok(r)
         if ok:
             self._log.info("power target set to %d W", watt)
+            try:
+                accepted = self._find_power_target_watt(r.json())
+                if accepted is not None and abs(int(accepted) - int(watt)) >= 10:
+                    self._log.warning("Braiins returned power target %d W after requesting %d W", accepted, watt)
+            except Exception:
+                pass
         else:
             self._log.warning("set_power_target failed: %s", r.text if r is not None else "no response")
         return ok
@@ -739,11 +756,16 @@ class BraiinsAPI:
         return ok
 
     def verify_target(self, kind: str, target: float | int) -> bool:
-        for _ in range(6):
-            time.sleep(2)
-            if self._target_matches(self.get_performance_target_state(), kind, target):
-                return True
-        return False
+        return self.wait_for_target(kind, target) is not None
+
+    def wait_for_target(self, kind: str, target: float | int, attempts: int = 6, delay_s: float = 2.0) -> dict | None:
+        for attempt in range(attempts):
+            state = self.get_performance_target_state()
+            if self._target_matches(state, kind, target):
+                return state
+            if attempt + 1 < attempts:
+                time.sleep(delay_s)
+        return None
 
     def verify_target_kind(self, kind: str) -> bool:
         for _ in range(6):
@@ -1163,23 +1185,53 @@ class PowerController:
                 self._braiins_err = max(self._braiins_err, before_err) + 1
                 self._state.update(command_state="failed", command_msg="Braiins Zielmodus wurde nicht bestätigt")
                 return
+            confirmed = self._braiins.wait_for_target(desired_kind, desired_value, attempts=3, delay_s=2)
+            if confirmed is not None:
+                self._braiins_err = 0
+                msg = (
+                    f"Power Target {desired.power_target_w} W aktiv"
+                    if desired.power_target_w is not None
+                    else f"Hashrate-Ziel {desired.hashrate_target_th:.1f} TH/s aktiv"
+                )
+                self._state.update(command_state="ok", command_msg=msg)
+                return
 
         if desired.power_target_w is not None:
-            if self._braiins.set_power_target(desired.power_target_w) and self._braiins.verify_target("power", desired.power_target_w):
-                self._braiins_err = 0
-                self._state.update(command_state="ok", command_msg=f"Power Target {desired.power_target_w} W aktiv")
-                return
+            for _ in range(2):
+                if self._braiins.set_power_target(desired.power_target_w):
+                    confirmed = self._braiins.wait_for_target("power", desired.power_target_w, attempts=4, delay_s=2)
+                    if confirmed is not None:
+                        self._braiins_err = 0
+                        self._state.update(command_state="ok", command_msg=f"Power Target {desired.power_target_w} W aktiv")
+                        return
             self._braiins_err = max(self._braiins_err, before_err) + 1
-            self._state.update(command_state="failed", command_msg="Power Target wurde vom Miner nicht bestätigt")
+            actual = self._braiins.get_performance_target_state()
+            actual_w = actual.get("power_target_w")
+            msg = (
+                f"Power Target wurde nicht bestätigt; Miner meldet {actual_w} W"
+                if actual.get("target_kind") == "power" and actual_w is not None
+                else "Power Target wurde vom Miner nicht bestätigt"
+            )
+            self._state.update(command_state="failed", command_msg=msg)
             return
 
-        if self._braiins.set_hashrate_target(desired.hashrate_target_th) and self._braiins.verify_target("hashrate", desired.hashrate_target_th):
-            self._braiins_err = 0
-            msg = f"Hashrate-Ziel {desired.hashrate_target_th:.1f} TH/s aktiv"
-            self._state.update(command_state="ok", command_msg=msg)
-        else:
-            self._braiins_err = max(self._braiins_err, before_err) + 1
-            self._state.update(command_state="failed", command_msg="Hashrate-Ziel wurde vom Miner nicht bestätigt")
+        for _ in range(2):
+            if self._braiins.set_hashrate_target(desired.hashrate_target_th):
+                confirmed = self._braiins.wait_for_target("hashrate", desired.hashrate_target_th, attempts=4, delay_s=2)
+                if confirmed is not None:
+                    self._braiins_err = 0
+                    msg = f"Hashrate-Ziel {desired.hashrate_target_th:.1f} TH/s aktiv"
+                    self._state.update(command_state="ok", command_msg=msg)
+                    return
+        self._braiins_err = max(self._braiins_err, before_err) + 1
+        actual = self._braiins.get_performance_target_state()
+        actual_th = actual.get("hashrate_target_th")
+        msg = (
+            f"Hashrate-Ziel wurde nicht bestätigt; Miner meldet {actual_th:.1f} TH/s"
+            if actual.get("target_kind") == "hashrate" and actual_th is not None
+            else "Hashrate-Ziel wurde vom Miner nicht bestätigt"
+        )
+        self._state.update(command_state="failed", command_msg=msg)
 
     def run_cycle(self) -> None:
         cfg = self._cfg.get()
