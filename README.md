@@ -105,7 +105,7 @@ if Fronius is temporarily unavailable:
   keep mining and hold the last known summer target
 ```
 
-Summer target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode` and verifies the active mode before reporting success. If only the value changes within the same type, it sends `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target.
+Summer target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target.
 
 The **Live** page shows the current decision, the calculated start threshold or active summer target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 

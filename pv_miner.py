@@ -738,9 +738,16 @@ class BraiinsAPI:
         return ok
 
     def verify_target(self, kind: str, target: float | int) -> bool:
-        for _ in range(4):
-            time.sleep(1)
+        for _ in range(6):
+            time.sleep(2)
             if self._target_matches(self.get_performance_target_state(), kind, target):
+                return True
+        return False
+
+    def verify_target_kind(self, kind: str) -> bool:
+        for _ in range(6):
+            time.sleep(2)
+            if self.get_performance_target_state().get("target_kind") == kind:
                 return True
         return False
 
@@ -1150,14 +1157,11 @@ class PowerController:
             return
 
         if current_target_kind != desired_kind:
-            if self._braiins.set_performance_mode_target(desired_kind, desired_value) and self._braiins.verify_target(desired_kind, desired_value):
-                self._braiins_err = 0
-                label = f"{desired.power_target_w} W" if desired_kind == "power" else f"{desired.hashrate_target_th:.1f} TH/s"
-                self._state.update(command_state="ok", command_msg=f"{'Power' if desired_kind == 'power' else 'Hashrate'} Target {label} aktiv")
+            if not (self._braiins.set_performance_mode_target(desired_kind, desired_value)
+                    and self._braiins.verify_target_kind(desired_kind)):
+                self._braiins_err = max(self._braiins_err, before_err) + 1
+                self._state.update(command_state="failed", command_msg="Braiins Zielmodus wurde nicht bestätigt")
                 return
-            self._braiins_err = max(self._braiins_err, before_err) + 1
-            self._state.update(command_state="failed", command_msg="Braiins Zielmodus wurde nicht bestätigt")
-            return
 
         if desired.power_target_w is not None:
             if self._braiins.set_power_target(desired.power_target_w) and self._braiins.verify_target("power", desired.power_target_w):
