@@ -44,7 +44,7 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
 - **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
 - **Stop erst nach Lastspitze** — delay before pausing on sustained battery discharge or grid import, default `3 min`
-- **PV-Sommer 24h** — optional mode: default `110 TH/s` above `4000 W` PV, `1200 W` power target below `2000 W` PV, switching after `5 min` stable PV
+- **PV-Sommer 24h** — optional mode: default `110 TH/s` above `4000 W` PV, `945 W` power target below `2000 W` PV, switching after `5 min` stable PV
 
 ## Docker
 

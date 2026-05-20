@@ -147,7 +147,7 @@ pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
                 \"akku_entlade_sperre_watt\": 100, \"start_stable_minutes\": 5,
                 \"stop_stable_minutes\": 3 },
   \"summer\":  { \"day_pv_threshold_watt\": 4000, \"night_pv_threshold_watt\": 2000,
-                \"high_hashrate_th\": 110, \"low_power_watt\": 1200,
+                \"high_hashrate_th\": 110, \"low_power_watt\": 945,
                 \"switch_stable_minutes\": 5 },
   \"mode\":    { \"active\": \"battery_auto\" },
   \"modes\":   { \"manual_override\": \"auto\" },

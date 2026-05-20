@@ -52,7 +52,7 @@ DEFAULT_CONFIG: dict = {
         "day_pv_threshold_watt": 4000,
         "night_pv_threshold_watt": 2000,
         "high_hashrate_th": 110,
-        "low_power_watt": 1200,
+        "low_power_watt": 945,
         "switch_stable_minutes": 5,
     },
     "mode": {
@@ -186,7 +186,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="field"><label>Tag ab PV (W)</label><input id="f-daypv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-daypv">Ab dieser PV-Leistung wird nach stabiler Zeit auf High gestellt.</div></div>
       <div class="field"><label>Nacht unter PV (W)</label><input id="f-nightpv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-nightpv">Unter dieser PV-Leistung wird nach stabiler Zeit auf Low gestellt.</div></div>
       <div class="field"><label>Tag Hashrate Target (TH/s)</label><input id="f-highth" type="number" min="1" max="200" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-highth">Hashrate Target für Tag/Sonne.</div></div>
-      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="900" max="7000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
+      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
       <div class="field"><label>Wechsel erst nach stabil (Minuten)</label><input id="f-switchmin" type="number" min="1" max="120" oninput="updateConfigHints()"><div class="hint" id="h-switchmin">PV muss so lange stabil über/unter der Schwelle bleiben.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg2"></span></div>
@@ -222,7 +222,7 @@ function setMode(mode){
 }
 function updateConfigHints(){
   const m=n('f-mneed',2800), b=n('f-bcl',2000), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100), gridtol=n('f-gridtol',300);
-  const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=n('f-loww',1200), sw=n('f-switchmin',5);
+  const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=n('f-loww',945), sw=n('f-switchmin',5);
   el('h-mneed').innerHTML=`pv-miner rechnet mit mindestens <em>${Math.max(2500,m)} W</em>. Sobald der Miner real mehr zieht, wird der höhere Wert genutzt.`;
   el('h-bcl').innerHTML=`Auto startet nur, wenn der Akku nach Miner und Haus noch etwa <em>${(b/1000).toFixed(1)} kW</em> laden kann.`;
   el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll; dann reicht Haus + Miner + Puffer.`;
@@ -267,13 +267,13 @@ async function fetchCfg(){
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
-    el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=d.summer?.low_power_watt??1200; el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
+    el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=d.summer?.low_power_watt??945; el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
     updateConfigHints();
   }catch(e){}
 }
 async function saveCfg(){
   const msg=activeMode==='summer_24h'?el('smsg2'):el('smsg');
-  const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:n('f-loww',1200),switch_stable_minutes:n('f-switchmin',5)}};
+  const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:n('f-loww',945),switch_stable_minutes:n('f-switchmin',5)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
@@ -970,7 +970,7 @@ class PowerController:
     def _summer_target_for_profile(self, cfg: dict, profile: str) -> tuple[str, float | int]:
         summer = cfg.get("summer", {})
         high_th = float(summer.get("high_hashrate_th", 110))
-        low_w = int(summer.get("low_power_watt", 1200))
+        low_w = int(summer.get("low_power_watt", 945))
         return ("hashrate", high_th) if profile == "day" else ("power", low_w)
 
     @staticmethod
@@ -1386,8 +1386,8 @@ def validate_config_patch(data: dict) -> str | None:
             return "Tag ab PV muss höher sein als Nacht unter PV"
         if not (1 <= float(summer.get("high_hashrate_th", 110)) <= 200):
             return "Tag Hashrate Target muss zwischen 1 und 200 TH/s liegen"
-        if not (900 <= int(summer.get("low_power_watt", 1200)) <= 7000):
-            return "Nacht Power Target muss zwischen 900 und 7000 W liegen"
+        if not (945 <= int(summer.get("low_power_watt", 945)) <= 7000):
+            return "Nacht Power Target muss zwischen 945 und 7000 W liegen"
         if not (1 <= int(summer.get("switch_stable_minutes", 5)) <= 120):
             return "Sommer-Wechselzeit muss zwischen 1 und 120 Minuten liegen"
     except (TypeError, ValueError):
