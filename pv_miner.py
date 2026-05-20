@@ -804,6 +804,22 @@ class PowerController:
     def _same_hashrate(a: float | None, b: float | None) -> bool:
         return a is not None and b is not None and abs(float(a) - float(b)) < 0.1
 
+    def _summer_target_for_profile(self, cfg: dict, profile: str) -> float:
+        summer = cfg.get("summer", {})
+        high_th = float(summer.get("high_hashrate_th", 103))
+        low_th = float(summer.get("low_hashrate_th", 50))
+        return high_th if profile == "day" else low_th
+
+    def _summer_profile_from_pv(self, pf: dict, cfg: dict) -> str:
+        summer = cfg.get("summer", {})
+        day_pv = int(summer.get("day_pv_threshold_watt", 4000))
+        night_pv = int(summer.get("night_pv_threshold_watt", 2000))
+        if pf["p_pv"] >= day_pv:
+            return "day"
+        if pf["p_pv"] <= night_pv:
+            return "night"
+        return self._summer_profile if self._summer_profile in ("day", "night") else "night"
+
     def _decide_summer(self, pf: dict | None, cfg: dict, miner_w_now: int) -> DesiredState:
         nums = self._decision_numbers(
             pf or {"p_load": 0, "soc": 0, "p_pv": 0, "p_akku": 0, "p_grid": 0},
@@ -813,20 +829,30 @@ class PowerController:
         summer = cfg.get("summer", {})
         day_pv = int(summer.get("day_pv_threshold_watt", 4000))
         night_pv = int(summer.get("night_pv_threshold_watt", 2000))
-        high_th = float(summer.get("high_hashrate_th", 103))
-        low_th = float(summer.get("low_hashrate_th", 50))
         wait_s = max(0, float(summer.get("switch_stable_minutes", 5))) * 60
         now = time.monotonic()
 
-        if self._summer_profile not in ("day", "night"):
-            self._summer_profile = "night"
-
         if pf is None:
-            target = high_th if self._summer_profile == "day" else low_th
+            if self._summer_profile not in ("day", "night"):
+                self._summer_profile = "night"
+            target = self._summer_target_for_profile(cfg, self._summer_profile)
+            profile_name = "Tag/High" if self._summer_profile == "day" else "Nacht/Low"
             return DesiredState(
                 "run",
                 "Sommermodus hält Zustand",
-                "Fronius ist nicht erreichbar. Auto hält das letzte Hashrate-Ziel.",
+                f"Fronius ist nicht erreichbar. Auto hält {profile_name} mit {target:.1f} TH/s.",
+                nums,
+                target,
+                self._summer_profile,
+            )
+
+        if self._summer_profile not in ("day", "night"):
+            self._summer_profile = self._summer_profile_from_pv(pf, cfg)
+            target = self._summer_target_for_profile(cfg, self._summer_profile)
+            return DesiredState(
+                "run",
+                f"Sommermodus {'Tag/High' if self._summer_profile == 'day' else 'Nacht/Low'}",
+                f"Sommerprofil aus aktueller PV-Leistung gesetzt: {target:.1f} TH/s.",
                 nums,
                 target,
                 self._summer_profile,
@@ -847,7 +873,7 @@ class PowerController:
         else:
             self._summer_switch_since = None
 
-        target = high_th if self._summer_profile == "day" else low_th
+        target = self._summer_target_for_profile(cfg, self._summer_profile)
         if desired_profile != self._summer_profile:
             target_name = "Tag/High" if desired_profile == "day" else "Nacht/Low"
             remain = max(0, int(wait_s - (now - (self._summer_switch_since or now))))
@@ -1020,13 +1046,17 @@ class PowerController:
             if override == "pause":
                 desired_state = DesiredState("pause", "Pause erzwungen", "Die Automatik ist pausiert.", auto_state.nums, None, auto_state.profile)
             elif override == "run":
+                forced_profile = self._summer_profile_from_pv(pf, cfg)
+                self._summer_profile = forced_profile
+                self._summer_switch_since = None
+                forced_target = self._summer_target_for_profile(cfg, forced_profile)
                 desired_state = DesiredState(
                     "run",
                     "Start erzwungen",
-                    "Der Miner wird gestartet; Sommer-Hashrate-Ziel wird weiter gesetzt.",
+                    "Der Miner wird gestartet; das Hashrate-Ziel folgt sofort der aktuellen PV-Leistung.",
                     auto_state.nums,
-                    auto_state.hashrate_target_th,
-                    auto_state.profile,
+                    forced_target,
+                    forced_profile,
                 )
 
             self._state.update(
