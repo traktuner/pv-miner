@@ -1,8 +1,8 @@
 # pv-miner
 
-Pauses and resumes an Antminer S19j Pro (Braiins OS) based on PV production and battery SOC from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
+Controls an Antminer S19j Pro (Braiins OS) based on PV production and battery data from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
 
-**Akku first:** pv-miner only lets the miner run when PV production covers the house, the configured battery charging reserve, the configured miner draw and a safety buffer. It does not change the miner's power target, hashrate target, autotuning mode or fan settings — those stay exactly as configured in Braiins OS.
+**Modes:** Akku-Auto pauses/resumes the miner so the battery keeps priority. PV-Sommer 24h mines continuously and switches only the Braiins OS hashrate target between day and night values. pv-miner never changes power target, autotuning mode or fan settings.
 
 ## One-line install
 
@@ -44,6 +44,7 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
 - **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
 - **Stop erst nach Lastspitze** — delay before pausing on sustained battery discharge or grid import, default `3 min`
+- **PV-Sommer 24h** — optional mode: default `103 TH/s` above `4000 W` PV, `50 TH/s` below `2000 W` PV, switching after `5 min` stable PV
 
 ## Docker
 
@@ -64,7 +65,9 @@ Docker updates are done by pulling a new image and recreating the container. The
 
 ## Control logic
 
-The miner is either **running** or **paused**. There is only one automatic mode.
+There are two clear automatic modes.
+
+**Akku-Auto**
 
 ```
 house_without_miner = abs(P_Load) - current_miner_power
@@ -87,12 +90,29 @@ if battery discharge or grid import stays too high for stop_stable_minutes:
 
 Starting is deliberately conservative: after a pause, the start condition must stay true for `start_stable_minutes` (default 5 minutes) before pv-miner starts the miner again. Stopping is deliberately less nervous: short heat-pump or household load spikes are tolerated, and pv-miner pauses only if battery discharge or grid import remains too high for `stop_stable_minutes` (default 3 minutes). Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
-The **Live** page shows the current decision, the calculated start threshold, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
+**PV-Sommer 24h**
+
+```
+if P_PV >= day_pv_threshold for switch_stable_minutes:
+  resume miner
+  set hashrate target to high_hashrate_th
+
+if P_PV <= night_pv_threshold for switch_stable_minutes:
+  resume miner
+  set hashrate target to low_hashrate_th
+
+if Fronius is temporarily unavailable:
+  keep mining and hold the last known summer target
+```
+
+Hashrate target writes are idempotent: pv-miner reads the current Braiins OS target first and only sends `PUT /performance/hashrate-target` when the target really differs.
+
+The **Live** page shows the current decision, the calculated start threshold or hashrate target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety. If a second inverter is configured, its `Site.P_PV` is added and the house load is recomputed from the whole-house balance `P_Load = -(P_Grid + P_Akku + P_PV)`.
-- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), and `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`). Power target, hashrate target, autotuning mode and fans are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads hashrate target from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, and writes summer-mode targets with `PUT /api/v1/performance/hashrate-target`. Power target, autotuning mode and fans are never written.
 
 ## Override buttons
 
@@ -102,7 +122,7 @@ The **Override** buttons force a state immediately, bypassing the automatic logi
 |---|---|
 | Auto | Battery-first automatic control |
 | Pause erzwingen | Force pause |
-| Laufen lassen | Force the miner to run, regardless of surplus |
+| Start erzwingen | Force the miner to run, regardless of surplus |
 
 ## Customising the install
 

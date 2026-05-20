@@ -146,6 +146,10 @@ pct exec "$CTID" -- sh -c "cat > /data/config.json << 'JSON'
                 \"grid_buffer_watt\": 200, \"grid_import_tolerance_watt\": 300,
                 \"akku_entlade_sperre_watt\": 100, \"start_stable_minutes\": 5,
                 \"stop_stable_minutes\": 3 },
+  \"summer\":  { \"day_pv_threshold_watt\": 4000, \"night_pv_threshold_watt\": 2000,
+                \"high_hashrate_th\": 103, \"low_hashrate_th\": 50,
+                \"switch_stable_minutes\": 5 },
+  \"mode\":    { \"active\": \"battery_auto\" },
   \"modes\":   { \"manual_override\": \"auto\" },
   \"logging\": { \"level\": \"INFO\", \"file\": \"/var/log/pv-miner.log\", \"max_bytes\": 10485760, \"backup_count\": 3 }
 }
