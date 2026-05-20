@@ -2,7 +2,7 @@
 
 Controls an Antminer S19j Pro (Braiins OS) based on PV production and battery data from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
 
-**Modes:** Akku-Auto pauses/resumes the miner so the battery keeps priority. PV-Sommer 24h mines continuously and switches only the Braiins OS hashrate target between day and night values. pv-miner never changes power target, autotuning mode or fan settings.
+**Modes:** Akku-Auto pauses/resumes the miner so the battery keeps priority. PV-Sommer 24h mines continuously, uses a Braiins OS hashrate target during the day, and uses a lower power target in the evening/night. pv-miner never changes autotuning mode or fan settings.
 
 ## One-line install
 
@@ -44,7 +44,7 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **Sicherheitspuffer** — extra PV margin, default `200 W`
 - **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
 - **Stop erst nach Lastspitze** — delay before pausing on sustained battery discharge or grid import, default `3 min`
-- **PV-Sommer 24h** — optional mode: default `103 TH/s` above `4000 W` PV, `50 TH/s` below `2000 W` PV, switching after `5 min` stable PV
+- **PV-Sommer 24h** — optional mode: default `110 TH/s` above `4000 W` PV, `1200 W` power target below `2000 W` PV, switching after `5 min` stable PV
 
 ## Docker
 
@@ -99,20 +99,20 @@ if P_PV >= day_pv_threshold for switch_stable_minutes:
 
 if P_PV <= night_pv_threshold for switch_stable_minutes:
   resume miner
-  set hashrate target to low_hashrate_th
+  set power target to low_power_watt
 
 if Fronius is temporarily unavailable:
   keep mining and hold the last known summer target
 ```
 
-Hashrate target writes are idempotent: pv-miner reads the current Braiins OS target first and only sends `PUT /performance/hashrate-target` when the target really differs.
+Summer target writes are idempotent: pv-miner reads the current Braiins OS target first and only sends `PUT /performance/hashrate-target` or `PUT /performance/power-target` when the target really differs.
 
-The **Live** page shows the current decision, the calculated start threshold or hashrate target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
+The **Live** page shows the current decision, the calculated start threshold or active summer target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety. If a second inverter is configured, its `Site.P_PV` is added and the house load is recomputed from the whole-house balance `P_Load = -(P_Grid + P_Akku + P_PV)`.
-- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads hashrate target from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, and writes summer-mode targets with `PUT /api/v1/performance/hashrate-target`. Power target, autotuning mode and fans are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads performance targets from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, and writes summer-mode targets with `PUT /api/v1/performance/hashrate-target` and `PUT /api/v1/performance/power-target`. Autotuning mode and fans are never written.
 
 ## Override buttons
 
