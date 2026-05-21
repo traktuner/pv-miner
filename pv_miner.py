@@ -60,8 +60,10 @@ DEFAULT_CONFIG: dict = {
         "active": "battery_auto",
     },
     "modes": {
-        # "auto" | "pause" | "run"
+        # "auto" | "pause" | "fixed_hashrate" | "fixed_power"
         "manual_override": "auto",
+        "fixed_hashrate_th": 110,
+        "fixed_power_watt": 1500,
     },
     "logging": {
         "level":        "INFO",
@@ -83,7 +85,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <title>pv-miner</title>
 <style>
 :root{--bg:#0b1020;--panel:#111827;--panel2:#162033;--line:#263244;--text:#eef4ff;--muted:#8ea0b8;--green:#35d07f;--amber:#f4bd50;--red:#ff6370;--blue:#58a6ff;--cyan:#3ddbd9}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input{background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input{background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
 </style>
 </head>
 <body>
@@ -128,9 +130,14 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="ov-row">
         <button id="ov-auto" onclick="setOv('auto')">Auto</button>
         <button id="ov-pause" onclick="setOv('pause')">Pause</button>
-        <button id="ov-run" onclick="setOv('run')">Start erzwingen</button>
+        <button id="ov-fixed_hashrate" onclick="setOv('fixed_hashrate')">Fix Hashrate</button>
+        <button id="ov-fixed_power" onclick="setOv('fixed_power')">Fix Watt</button>
       </div>
-      <div class="hint" style="margin-top:10px">Auto: Akku hat Vorrang. Pause und Start erzwingen überschreiben die Automatik bis du wieder Auto aktivierst.</div>
+      <div class="fixed-targets">
+        <div class="field" id="fixed-hashrate-field"><label>Fix Hashrate Ziel (TH/s)</label><input id="f-fixed-th" type="number" min="1" max="200" step="0.1" onchange="setOv('fixed_hashrate')"><div class="hint">Ignoriert PV/Akku und setzt Braiins OS dauerhaft auf dieses Hashrate Target.</div></div>
+        <div class="field" id="fixed-power-field"><label>Fix Watt Ziel (W)</label><input id="f-fixed-w" type="number" min="945" max="7000" step="1" onchange="setOv('fixed_power')"><div class="hint">Ignoriert PV/Akku und setzt Braiins OS dauerhaft auf dieses Power Target.</div></div>
+      </div>
+      <div class="hint" style="margin-top:10px">Auto folgt dem gewählten Betriebsmodus. Pause stoppt. Fix-Modi übersteuern die Automatik bis du wieder Auto aktivierst.</div>
       <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
       <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
@@ -213,6 +220,22 @@ function targetValue(d, desired){
 function cls(card,kind){card.className='card '+(kind||'')}
 let activeMode='battery_auto';
 let decisionTimer=null;
+function clampFixedPower(){
+  const v=Math.max(945,n('f-fixed-w',1500));
+  el('f-fixed-w').value=v;
+  return v;
+}
+function currentFixedTarget(mode){
+  if(mode==='fixed_hashrate') return {hashrate_th:n('f-fixed-th',110)};
+  if(mode==='fixed_power') return {power_watt:clampFixedPower()};
+  return {};
+}
+function setOverrideUi(mode){
+  const current=mode||'auto';
+  ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('ov-'+m)?.classList.toggle('active',m===current));
+  el('fixed-hashrate-field')?.classList.toggle('active',current==='fixed_hashrate');
+  el('fixed-power-field')?.classList.toggle('active',current==='fixed_power');
+}
 function fmtTimer(seconds){
   const s=Math.max(0,Math.ceil(seconds));
   return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
@@ -272,19 +295,21 @@ async function fetchStatus(){
     el('v-ppv').textContent=fw(d.p_pv); el('v-pload').textContent=absw(d.p_load); el('v-power').textContent=fw(d.miner_power_w);
     el('l-pgrid').textContent=d.p_grid==null?'Netz':(d.p_grid<0?'Netz Einspeisung':(d.p_grid>0?'Netz Bezug':'Netz neutral')); el('v-pgrid').textContent=absw(d.p_grid);
     el('l-pakku').textContent=d.p_akku==null?'Batterie':(d.p_akku>0?'Batterie entlädt':(d.p_akku<0?'Batterie lädt':'Batterie neutral')); el('v-pakku').textContent=absw(d.p_akku);
-    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=d.active_mode==='summer_24h'?(d.summer_profile==='day'?'Tag':'Nacht'):fw(d.battery_charge_target_w); el('v-miner-need').textContent=d.active_mode==='summer_24h'?targetValue(d,false):fw(d.miner_needed_w); el('v-buffer').textContent=fw(d.grid_buffer_watt);
-    el('l-batt-reserve').textContent=d.active_mode==='summer_24h'?'PV-Profil':'Akku-Ladeziel';
-    el('l-miner-need').textContent=d.active_mode==='summer_24h'?(d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell'):'Miner benötigt';
-    el('l-required').textContent=d.active_mode==='summer_24h'?(d.summer_target_kind==='power'?'Power Target':'Hashrate Target'):'Start erlaubt ab';
-    el('v-required').textContent=d.active_mode==='summer_24h'?targetValue(d,true):kw(d.required_pv_w);
-    el('v-required-sub').textContent=d.active_mode==='summer_24h'?'Sommermodus minet dauerhaft; Tag nutzt Hashrate Target, Nacht nutzt Power Target.':(d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: Haus + Miner + Puffer reichen für den Start.':'Akku lädt zuerst: Start braucht Haus + Ladeziel + Miner + Puffer.');
-    el('l-verfuegbar').textContent=d.active_mode==='summer_24h'?'Zieltyp':'Verfügbar'; el('v-verfuegbar').textContent=d.active_mode==='summer_24h'?(d.summer_target_kind==='power'?'Watt':'TH/s'):fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
+    const fixed=d.manual_override==='fixed_hashrate'||d.manual_override==='fixed_power';
+    const targetMode=d.active_mode==='summer_24h'||fixed;
+    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fixed?'Fix':(d.active_mode==='summer_24h'?(d.summer_profile==='day'?'Tag':'Nacht'):fw(d.battery_charge_target_w)); el('v-miner-need').textContent=targetMode?targetValue(d,false):fw(d.miner_needed_w); el('v-buffer').textContent=fw(d.grid_buffer_watt);
+    el('l-batt-reserve').textContent=fixed?'Override':(d.active_mode==='summer_24h'?'PV-Profil':'Akku-Ladeziel');
+    el('l-miner-need').textContent=targetMode?(d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell'):'Miner benötigt';
+    el('l-required').textContent=targetMode?(fixed?'Fix Ziel':(d.summer_target_kind==='power'?'Power Target':'Hashrate Target')):'Start erlaubt ab';
+    el('v-required').textContent=targetMode?targetValue(d,true):kw(d.required_pv_w);
+    el('v-required-sub').textContent=fixed?'Fix-Modus übersteuert die Automatik bis du wieder Auto aktivierst.':(d.active_mode==='summer_24h'?'Sommermodus minet dauerhaft; Tag nutzt Hashrate Target, Nacht nutzt Power Target.':(d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: Haus + Miner + Puffer reichen für den Start.':'Akku lädt zuerst: Start braucht Haus + Ladeziel + Miner + Puffer.'));
+    el('l-verfuegbar').textContent=targetMode?'Zieltyp':'Verfügbar'; el('v-verfuegbar').textContent=targetMode?(d.summer_target_kind==='power'?'Watt':'TH/s'):fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
     const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
     el('decision-title').textContent=d.decision_title||'Warte auf Daten'; setDecisionReason(d);
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
     cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
-    ['auto','pause','run'].forEach(m=>el('ov-'+m).classList.toggle('active',m===(d.manual_override||'auto')));
+    setOverrideUi(d.manual_override||'auto');
     if(d.command_state==='ok'){el('cmdmsg').className='hint';el('cmdmsg').textContent=d.command_msg||'Befehl bestätigt';}
     else if(d.command_state){el('cmdmsg').className='hint warn';el('cmdmsg').textContent=d.command_msg||'Befehl nicht bestätigt';}
     else el('cmdmsg').textContent='';
@@ -295,6 +320,7 @@ async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
     setMode(d.mode?.active||'battery_auto');
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
+    el('f-fixed-th').value=d.modes?.fixed_hashrate_th??110; el('f-fixed-w').value=Math.max(945,d.modes?.fixed_power_watt??1500);
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
     el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=Math.max(945,d.summer?.low_power_watt??945); el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
@@ -309,7 +335,21 @@ async function saveCfg(){
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
 }
-async function setOv(mode){await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}).catch(()=>{});fetchStatus();}
+async function setOv(mode){
+  setOverrideUi(mode);
+  try{
+    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,...currentFixedTarget(mode)})});
+    if(!r.ok){
+      const e=await r.json().catch(()=>({error:'Befehl nicht angenommen'}));
+      el('cmdmsg').className='hint warn';
+      el('cmdmsg').textContent=e.error||'Befehl nicht angenommen';
+    }
+  }catch(e){
+    el('cmdmsg').className='hint warn';
+    el('cmdmsg').textContent='Netzwerkfehler';
+  }
+  fetchStatus();
+}
 async function doUpdate(){
   const btn=el('btn-update'), msg=el('umsg'); btn.disabled=true; msg.className=''; msg.textContent='Prüfe Update...';
   try{const r=await fetch('/api/update',{method:'POST'}); const result=await r.json(); if(!r.ok){msg.className='err';msg.textContent=result.error||'Update fehlgeschlagen';btn.disabled=false;return;} if(result.updated===false){msg.className='ok';msg.textContent='Bereits aktuell.';btn.disabled=false;return;}}
@@ -375,6 +415,17 @@ class ConfigManager:
     def set_override(self, mode: str) -> None:
         with self._lock:
             self._cfg.setdefault("modes", {})["manual_override"] = mode
+            self._write(self._cfg)
+
+    def set_override_target(self, mode: str, *, hashrate_th: float | None = None,
+                            power_watt: int | None = None) -> None:
+        with self._lock:
+            modes = self._cfg.setdefault("modes", {})
+            modes["manual_override"] = mode
+            if hashrate_th is not None:
+                modes["fixed_hashrate_th"] = float(hashrate_th)
+            if power_watt is not None:
+                modes["fixed_power_watt"] = max(945, int(power_watt))
             self._write(self._cfg)
 
 
@@ -986,13 +1037,11 @@ class PowerController:
         return "pause", nums, "Zu wenig PV", f"Es fehlen {missing:.0f} W für Haus, Miner und Puffer."
 
     def _decide(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
-        override = cfg.get("modes", {}).get("manual_override", "auto")
+        override = self._override(cfg)
         auto_action, nums, auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
 
         if override == "pause":
-            return "pause", nums, "Pause erzwungen", "Die Automatik ist pausiert."
-        if override == "run":
-            return "run", nums, "Start erzwungen", "Der Miner wird unabhängig von PV/Akku gestartet."
+            return "pause", nums, "Pause", "Die Automatik ist pausiert."
 
         return auto_action, nums, auto_title, auto_reason
 
@@ -1023,6 +1072,38 @@ class PowerController:
     def _mode(cfg: dict) -> str:
         mode = cfg.get("mode", {}).get("active", "battery_auto")
         return mode if mode in ("battery_auto", "summer_24h") else "battery_auto"
+
+    @staticmethod
+    def _override(cfg: dict) -> str:
+        override = cfg.get("modes", {}).get("manual_override", "auto")
+        return override if override in ("auto", "pause", "fixed_hashrate", "fixed_power") else "auto"
+
+    def _fixed_override_state(self, cfg: dict, nums: dict) -> DesiredState | None:
+        override = self._override(cfg)
+        modes = cfg.get("modes", {})
+        if override == "pause":
+            return DesiredState("pause", "Pause", "Die Automatik ist pausiert.", nums)
+        if override == "fixed_hashrate":
+            target = max(1.0, min(200.0, float(modes.get("fixed_hashrate_th", 110))))
+            return DesiredState(
+                "run",
+                "Fix Hashrate",
+                f"Automatik ist aus. Der Miner läuft dauerhaft mit {target:.1f} TH/s.",
+                nums,
+                hashrate_target_th=target,
+                profile="fixed",
+            )
+        if override == "fixed_power":
+            target = max(945, min(7000, int(modes.get("fixed_power_watt", 1500))))
+            return DesiredState(
+                "run",
+                "Fix Watt",
+                f"Automatik ist aus. Der Miner läuft dauerhaft mit {target} W.",
+                nums,
+                power_target_w=target,
+                profile="fixed",
+            )
+        return None
 
     @staticmethod
     def _same_hashrate(a: float | None, b: float | None) -> bool:
@@ -1288,6 +1369,36 @@ class PowerController:
         if pf is None:
             self._fronius_err += 1
             self._log.warning("Fronius unreachable (streak: %d)", self._fronius_err)
+            fixed_state = self._fixed_override_state(cfg, self._decision_numbers(
+                {"p_load": 0, "soc": 0, "p_pv": 0, "p_akku": 0, "p_grid": 0},
+                cfg,
+                miner_w_now,
+            ))
+            if fixed_state is not None and miner_host:
+                self._state.update(
+                    miner_power_w=miner_w_now if miner_st else None,
+                    hashrate_target_th=current_hashrate_th,
+                    power_target_w=current_power_target_w,
+                    desired_hashrate_target_th=fixed_state.hashrate_target_th,
+                    desired_power_target_w=fixed_state.power_target_w,
+                    display_state=self._display(fixed_state.action),
+                    manual_override=override,
+                    active_mode=active_mode,
+                    summer_profile=fixed_state.profile,
+                    summer_target_kind=fixed_state.target_kind,
+                    start_wait_remaining_s=None,
+                    stop_wait_remaining_s=None,
+                    summer_switch_remaining_s=None,
+                    poll_interval_seconds=poll_interval,
+                    decision_title=fixed_state.title,
+                    decision_reason=fixed_state.reason,
+                    auto_preview_action=None,
+                    auto_preview_title=None,
+                    auto_preview_reason="Auto ist aktuell übersteuert.",
+                    **fixed_state.nums,
+                )
+                self._apply_desired(fixed_state, current_hashrate_th, current_power_target_w, current_target_kind)
+                return
             if active_mode == "summer_24h" and miner_host and override == "auto":
                 desired_state = self._decide_summer(None, cfg, miner_w_now)
                 self._state.update(
@@ -1354,24 +1465,40 @@ class PowerController:
             )
             return
 
+        fixed_state = self._fixed_override_state(cfg, nums)
+        if fixed_state is not None:
+            self._state.update(
+                soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
+                miner_power_w=miner_w_now if miner_st else None,
+                hashrate_target_th=current_hashrate_th,
+                power_target_w=current_power_target_w,
+                desired_hashrate_target_th=fixed_state.hashrate_target_th,
+                desired_power_target_w=fixed_state.power_target_w,
+                verfuegbar_w=max(0, fixed_state.nums["available_w"]),
+                display_state=self._display(fixed_state.action), manual_override=override,
+                active_mode=active_mode, summer_profile=fixed_state.profile,
+                summer_target_kind=fixed_state.target_kind,
+                start_wait_remaining_s=None,
+                stop_wait_remaining_s=None,
+                summer_switch_remaining_s=None,
+                poll_interval_seconds=poll_interval,
+                decision_title=fixed_state.title,
+                decision_reason=fixed_state.reason,
+                auto_preview_action=None,
+                auto_preview_title=None,
+                auto_preview_reason="Auto ist aktuell übersteuert.",
+                **fixed_state.nums,
+            )
+            self._log.info("[cycle] override=%s target=%s/%s → %s",
+                           override, fixed_state.target_kind,
+                           fixed_state.hashrate_target_th or fixed_state.power_target_w,
+                           fixed_state.action.upper())
+            self._apply_desired(fixed_state, current_hashrate_th, current_power_target_w, current_target_kind)
+            return
+
         if active_mode == "summer_24h":
             auto_state = self._decide_summer(pf, cfg, miner_w_now)
             desired_state = auto_state
-            if override == "pause":
-                desired_state = DesiredState("pause", "Pause erzwungen", "Die Automatik ist pausiert.", auto_state.nums, profile=auto_state.profile)
-            elif override == "run":
-                forced_profile = self._summer_profile_from_pv(pf, cfg)
-                self._summer_profile = forced_profile
-                self._summer_switch_since = None
-                forced_target = self._summer_target_for_profile(cfg, forced_profile)
-                desired_state = self._desired_with_target(
-                    "run",
-                    "Start erzwungen",
-                    "Der Miner wird gestartet; das Ziel folgt sofort der aktuellen PV-Leistung.",
-                    auto_state.nums,
-                    forced_target,
-                    forced_profile,
-                )
 
             self._state.update(
                 soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
@@ -1464,10 +1591,17 @@ def validate_config_patch(data: dict) -> str | None:
     miner = data.get("miner", {})
     mode = data.get("mode", {})
     summer = data.get("summer", {})
+    modes = data.get("modes", {})
 
     try:
         if mode.get("active", "battery_auto") not in ("battery_auto", "summer_24h"):
             return "Betriebsmodus ist ungültig"
+        if modes and modes.get("manual_override", "auto") not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
+            return "Steuerungsmodus ist ungültig"
+        if modes and not (1 <= float(modes.get("fixed_hashrate_th", 110)) <= 200):
+            return "Fix Hashrate muss zwischen 1 und 200 TH/s liegen"
+        if modes and not (945 <= int(modes.get("fixed_power_watt", 1500)) <= 7000):
+            return "Fix Watt muss zwischen 945 und 7000 W liegen"
         if not (2500 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
             return "Miner benötigt muss zwischen 2500 und 10000 W liegen"
         if not (0 <= int(ctrl.get("battery_charge_target_watt", 2000)) <= 30000):
@@ -1508,6 +1642,13 @@ def normalize_config_patch(data: dict) -> None:
         summer["low_power_watt"] = max(945, int(summer.get("low_power_watt", 945)))
     except (TypeError, ValueError):
         summer["low_power_watt"] = 945
+    modes = data.setdefault("modes", {})
+    if modes.get("manual_override") == "run":
+        modes["manual_override"] = "auto"
+    try:
+        modes["fixed_power_watt"] = max(945, int(modes.get("fixed_power_watt", 1500)))
+    except (TypeError, ValueError):
+        modes["fixed_power_watt"] = 1500
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -1672,10 +1813,50 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
     def api_override():
         data = request.get_json(silent=True) or {}
         mode = data.get("mode", "auto")
-        if mode not in ("auto", "pause", "run"):
+        if mode not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return jsonify({"error": "Invalid mode"}), 400
-        cfg_manager.set_override(mode)
-        state.update(manual_override=mode, command_state=None, command_msg=None)
+        hashrate_th = None
+        power_watt = None
+        try:
+            if mode == "fixed_hashrate":
+                hashrate_th = float(data.get("hashrate_th", 110))
+                if not (1 <= hashrate_th <= 200):
+                    return jsonify({"error": "Fix Hashrate muss zwischen 1 und 200 TH/s liegen"}), 400
+            if mode == "fixed_power":
+                power_watt = max(945, int(data.get("power_watt", 1500)))
+                if power_watt > 7000:
+                    return jsonify({"error": "Fix Watt muss zwischen 945 und 7000 W liegen"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "Fix-Ziel ist ungültig"}), 400
+        cfg_manager.set_override_target(mode, hashrate_th=hashrate_th, power_watt=power_watt)
+        state_patch = {
+            "manual_override": mode,
+            "command_state": None,
+            "command_msg": None,
+            "desired_hashrate_target_th": None,
+            "desired_power_target_w": None,
+            "summer_profile": None,
+            "summer_target_kind": None,
+        }
+        if mode == "fixed_hashrate":
+            state_patch.update(
+                decision_title="Fix Hashrate",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit {hashrate_th:.1f} TH/s.",
+                desired_hashrate_target_th=hashrate_th,
+                desired_power_target_w=None,
+                summer_profile="fixed",
+                summer_target_kind="hashrate",
+            )
+        elif mode == "fixed_power":
+            state_patch.update(
+                decision_title="Fix Watt",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit {power_watt} W.",
+                desired_hashrate_target_th=None,
+                desired_power_target_w=power_watt,
+                summer_profile="fixed",
+                summer_target_kind="power",
+            )
+        state.update(**state_patch)
         logging.getLogger("cycle").info("Override: %s", mode)
         return jsonify({"ok": True})
 
