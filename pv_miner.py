@@ -212,6 +212,36 @@ function targetValue(d, desired){
 }
 function cls(card,kind){card.className='card '+(kind||'')}
 let activeMode='battery_auto';
+let decisionTimer=null;
+function fmtTimer(seconds){
+  const s=Math.max(0,Math.ceil(seconds));
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+function setDecisionReason(d){
+  const reason=d.decision_reason||'';
+  const timers=[
+    {value:d.summer_switch_remaining_s, re:/Wechsel in \\d+:\\d{2}/, text:s=>`Wechsel in ${fmtTimer(s)}`},
+    {value:d.start_wait_remaining_s, re:/Miner startet in \\d+:\\d{2}/, text:s=>`Miner startet in ${fmtTimer(s)}`},
+    {value:d.stop_wait_remaining_s, re:/Auto pausiert erst in \\d+:\\d{2}/, text:s=>`Auto pausiert erst in ${fmtTimer(s)}`},
+  ];
+  decisionTimer=null;
+  for(const t of timers){
+    if(Number.isFinite(+t.value) && t.re.test(reason)){
+      decisionTimer={base:reason, started:Date.now(), remaining:+t.value, re:t.re, text:t.text};
+      break;
+    }
+  }
+  if(!decisionTimer){
+    el('decision-reason').textContent=reason;
+    return;
+  }
+  renderDecisionReason();
+}
+function renderDecisionReason(){
+  if(!decisionTimer){return;}
+  const left=Math.max(0,decisionTimer.remaining-((Date.now()-decisionTimer.started)/1000));
+  el('decision-reason').textContent=decisionTimer.base.replace(decisionTimer.re,decisionTimer.text(left));
+}
 function setMode(mode){
   activeMode=mode;
   el('mode-battery')?.classList.toggle('active',mode==='battery_auto');
@@ -250,7 +280,7 @@ async function fetchStatus(){
     el('v-required-sub').textContent=d.active_mode==='summer_24h'?'Sommermodus minet dauerhaft; Tag nutzt Hashrate Target, Nacht nutzt Power Target.':(d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: Haus + Miner + Puffer reichen für den Start.':'Akku lädt zuerst: Start braucht Haus + Ladeziel + Miner + Puffer.');
     el('l-verfuegbar').textContent=d.active_mode==='summer_24h'?'Zieltyp':'Verfügbar'; el('v-verfuegbar').textContent=d.active_mode==='summer_24h'?(d.summer_target_kind==='power'?'Watt':'TH/s'):fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
     const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
-    el('decision-title').textContent=d.decision_title||'Warte auf Daten'; el('decision-reason').textContent=d.decision_reason||'';
+    el('decision-title').textContent=d.decision_title||'Warte auf Daten'; setDecisionReason(d);
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
     cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
@@ -287,7 +317,7 @@ async function doUpdate(){
   msg.textContent='Update installiert, Service startet neu...'; let stable=0,tries=0,started=Date.now();
   const poll=setInterval(async()=>{tries++;try{const r=await fetch('/api/status?u='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error();await r.json();stable++;if(Date.now()-started<6000||stable<2)return;clearInterval(poll);msg.className='ok';msg.textContent='Update erfolgreich.';setTimeout(()=>location.reload(),1200);}catch(e){stable=0;if(tries>=60){clearInterval(poll);msg.className='err';msg.textContent='Service antwortet nicht. Logs prüfen.';btn.disabled=false;}}},1000);
 }
-fetchStatus();fetchCfg();setInterval(fetchStatus,10000);
+fetchStatus();fetchCfg();setInterval(fetchStatus,10000);setInterval(renderDecisionReason,1000);
 </script>
 </body>
 </html>
@@ -835,6 +865,7 @@ class StateStore:
             "active_mode": "battery_auto", "summer_profile": None,
             "summer_target_kind": None,
             "start_wait_remaining_s": None, "stop_wait_remaining_s": None,
+            "summer_switch_remaining_s": None,
             "poll_interval_seconds": None,
             "display_state": "unknown", "manual_override": "auto",
             "decision_title": "Warte auf Daten", "decision_reason": "",
@@ -1002,6 +1033,12 @@ class PowerController:
         high_th = float(summer.get("high_hashrate_th", 110))
         low_w = max(945, int(summer.get("low_power_watt", 945)))
         return ("hashrate", high_th) if profile == "day" else ("power", low_w)
+
+    def _summer_switch_remaining(self, cfg: dict) -> int | None:
+        if self._summer_switch_since is None:
+            return None
+        wait_s = max(0, float(cfg.get("summer", {}).get("switch_stable_minutes", 5))) * 60
+        return max(0, int(wait_s - (time.monotonic() - self._summer_switch_since)))
 
     @staticmethod
     def _desired_with_target(action: str, title: str, reason: str, nums: dict,
@@ -1264,6 +1301,9 @@ class PowerController:
                     active_mode=active_mode,
                     summer_profile=desired_state.profile,
                     summer_target_kind=desired_state.target_kind,
+                    start_wait_remaining_s=None,
+                    stop_wait_remaining_s=None,
+                    summer_switch_remaining_s=None,
                     poll_interval_seconds=poll_interval,
                     decision_title=desired_state.title,
                     decision_reason=desired_state.reason,
@@ -1283,6 +1323,9 @@ class PowerController:
                 display_state=self._display(self._cur_action) if miner_host else "unknown",
                 manual_override=override,
                 active_mode=active_mode,
+                start_wait_remaining_s=None,
+                stop_wait_remaining_s=None,
+                summer_switch_remaining_s=None,
                 poll_interval_seconds=poll_interval,
                 decision_title="Fronius nicht erreichbar",
                 decision_reason="Ohne Wechselrichterdaten wird im Auto-Modus sicherheitshalber pausiert.",
@@ -1302,6 +1345,8 @@ class PowerController:
                 verfuegbar_w=max(0, nums["available_w"]), manual_override=override,
                 active_mode=active_mode,
                 display_state="unknown", poll_interval_seconds=poll_interval,
+                start_wait_remaining_s=None, stop_wait_remaining_s=None,
+                summer_switch_remaining_s=None,
                 decision_title="Antminer fehlt", decision_reason="Fronius wird angezeigt; zum Schalten fehlt noch die Antminer-IP.",
                 auto_preview_action=None, auto_preview_title=None,
                 auto_preview_reason="Auto kann ohne Antminer-IP noch nicht schalten.",
@@ -1339,6 +1384,9 @@ class PowerController:
                 display_state=self._display(desired_state.action), manual_override=override,
                 active_mode=active_mode, summer_profile=desired_state.profile,
                 summer_target_kind=desired_state.target_kind,
+                start_wait_remaining_s=None,
+                stop_wait_remaining_s=None,
+                summer_switch_remaining_s=self._summer_switch_remaining(cfg),
                 poll_interval_seconds=poll_interval,
                 decision_title=desired_state.title, decision_reason=desired_state.reason,
                 auto_preview_action=auto_state.action,
@@ -1392,6 +1440,7 @@ class PowerController:
             active_mode=active_mode, summer_profile=None, summer_target_kind=None,
             poll_interval_seconds=poll_interval, decision_title=title, decision_reason=reason,
             start_wait_remaining_s=wait_remaining, stop_wait_remaining_s=stop_wait_remaining,
+            summer_switch_remaining_s=None,
             auto_preview_action=auto_action, auto_preview_title=auto_preview_title,
             auto_preview_reason=auto_preview_reason,
             **nums,
