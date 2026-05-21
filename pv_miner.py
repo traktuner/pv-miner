@@ -62,8 +62,6 @@ DEFAULT_CONFIG: dict = {
     "modes": {
         # "auto" | "pause" | "fixed_hashrate" | "fixed_power"
         "manual_override": "auto",
-        "fixed_hashrate_th": 110,
-        "fixed_power_watt": 1500,
     },
     "logging": {
         "level":        "INFO",
@@ -133,11 +131,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <button id="ov-fixed_hashrate" onclick="setOv('fixed_hashrate')">Fix Hashrate</button>
         <button id="ov-fixed_power" onclick="setOv('fixed_power')">Fix Watt</button>
       </div>
-      <div class="fixed-targets">
-        <div class="field" id="fixed-hashrate-field"><label>Fix Hashrate Ziel (TH/s)</label><input id="f-fixed-th" type="number" min="1" max="200" step="0.1" onchange="setOv('fixed_hashrate')"><div class="hint">Ignoriert PV/Akku und setzt Braiins OS dauerhaft auf dieses Hashrate Target.</div></div>
-        <div class="field" id="fixed-power-field"><label>Fix Watt Ziel (W)</label><input id="f-fixed-w" type="number" min="945" max="7000" step="1" onchange="setOv('fixed_power')"><div class="hint">Ignoriert PV/Akku und setzt Braiins OS dauerhaft auf dieses Power Target.</div></div>
-      </div>
-      <div class="hint" style="margin-top:10px">Auto folgt dem gewählten Betriebsmodus. Pause stoppt. Fix-Modi übersteuern die Automatik bis du wieder Auto aktivierst.</div>
+      <div class="hint" style="margin-top:10px">Auto folgt dem gewählten Betriebsmodus. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel aus den Einstellungen, Fix Watt das Nacht-Ziel.</div>
       <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
       <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
@@ -220,21 +214,9 @@ function targetValue(d, desired){
 function cls(card,kind){card.className='card '+(kind||'')}
 let activeMode='battery_auto';
 let decisionTimer=null;
-function clampFixedPower(){
-  const v=Math.max(945,n('f-fixed-w',1500));
-  el('f-fixed-w').value=v;
-  return v;
-}
-function currentFixedTarget(mode){
-  if(mode==='fixed_hashrate') return {hashrate_th:n('f-fixed-th',110)};
-  if(mode==='fixed_power') return {power_watt:clampFixedPower()};
-  return {};
-}
 function setOverrideUi(mode){
   const current=mode||'auto';
   ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('ov-'+m)?.classList.toggle('active',m===current));
-  el('fixed-hashrate-field')?.classList.toggle('active',current==='fixed_hashrate');
-  el('fixed-power-field')?.classList.toggle('active',current==='fixed_power');
 }
 function fmtTimer(seconds){
   const s=Math.max(0,Math.ceil(seconds));
@@ -320,7 +302,6 @@ async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
     setMode(d.mode?.active||'battery_auto');
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
-    el('f-fixed-th').value=d.modes?.fixed_hashrate_th??110; el('f-fixed-w').value=Math.max(945,d.modes?.fixed_power_watt??1500);
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
     el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=Math.max(945,d.summer?.low_power_watt??945); el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
@@ -338,7 +319,7 @@ async function saveCfg(){
 async function setOv(mode){
   setOverrideUi(mode);
   try{
-    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,...currentFixedTarget(mode)})});
+    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
     if(!r.ok){
       const e=await r.json().catch(()=>({error:'Befehl nicht angenommen'}));
       el('cmdmsg').className='hint warn';
@@ -415,17 +396,6 @@ class ConfigManager:
     def set_override(self, mode: str) -> None:
         with self._lock:
             self._cfg.setdefault("modes", {})["manual_override"] = mode
-            self._write(self._cfg)
-
-    def set_override_target(self, mode: str, *, hashrate_th: float | None = None,
-                            power_watt: int | None = None) -> None:
-        with self._lock:
-            modes = self._cfg.setdefault("modes", {})
-            modes["manual_override"] = mode
-            if hashrate_th is not None:
-                modes["fixed_hashrate_th"] = float(hashrate_th)
-            if power_watt is not None:
-                modes["fixed_power_watt"] = max(945, int(power_watt))
             self._write(self._cfg)
 
 
@@ -1080,25 +1050,25 @@ class PowerController:
 
     def _fixed_override_state(self, cfg: dict, nums: dict) -> DesiredState | None:
         override = self._override(cfg)
-        modes = cfg.get("modes", {})
+        summer = cfg.get("summer", {})
         if override == "pause":
             return DesiredState("pause", "Pause", "Die Automatik ist pausiert.", nums)
         if override == "fixed_hashrate":
-            target = max(1.0, min(200.0, float(modes.get("fixed_hashrate_th", 110))))
+            target = max(1.0, min(200.0, float(summer.get("high_hashrate_th", 110))))
             return DesiredState(
                 "run",
                 "Fix Hashrate",
-                f"Automatik ist aus. Der Miner läuft dauerhaft mit {target:.1f} TH/s.",
+                f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Tag-Ziel: {target:.1f} TH/s.",
                 nums,
                 hashrate_target_th=target,
                 profile="fixed",
             )
         if override == "fixed_power":
-            target = max(945, min(7000, int(modes.get("fixed_power_watt", 1500))))
+            target = max(945, min(7000, int(summer.get("low_power_watt", 945))))
             return DesiredState(
                 "run",
                 "Fix Watt",
-                f"Automatik ist aus. Der Miner läuft dauerhaft mit {target} W.",
+                f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Nacht-Ziel: {target} W.",
                 nums,
                 power_target_w=target,
                 profile="fixed",
@@ -1598,10 +1568,6 @@ def validate_config_patch(data: dict) -> str | None:
             return "Betriebsmodus ist ungültig"
         if modes and modes.get("manual_override", "auto") not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return "Steuerungsmodus ist ungültig"
-        if modes and not (1 <= float(modes.get("fixed_hashrate_th", 110)) <= 200):
-            return "Fix Hashrate muss zwischen 1 und 200 TH/s liegen"
-        if modes and not (945 <= int(modes.get("fixed_power_watt", 1500)) <= 7000):
-            return "Fix Watt muss zwischen 945 und 7000 W liegen"
         if not (2500 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
             return "Miner benötigt muss zwischen 2500 und 10000 W liegen"
         if not (0 <= int(ctrl.get("battery_charge_target_watt", 2000)) <= 30000):
@@ -1645,10 +1611,8 @@ def normalize_config_patch(data: dict) -> None:
     modes = data.setdefault("modes", {})
     if modes.get("manual_override") == "run":
         modes["manual_override"] = "auto"
-    try:
-        modes["fixed_power_watt"] = max(945, int(modes.get("fixed_power_watt", 1500)))
-    except (TypeError, ValueError):
-        modes["fixed_power_watt"] = 1500
+    modes.pop("fixed_hashrate_th", None)
+    modes.pop("fixed_power_watt", None)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -1815,20 +1779,11 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         mode = data.get("mode", "auto")
         if mode not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return jsonify({"error": "Invalid mode"}), 400
-        hashrate_th = None
-        power_watt = None
-        try:
-            if mode == "fixed_hashrate":
-                hashrate_th = float(data.get("hashrate_th", 110))
-                if not (1 <= hashrate_th <= 200):
-                    return jsonify({"error": "Fix Hashrate muss zwischen 1 und 200 TH/s liegen"}), 400
-            if mode == "fixed_power":
-                power_watt = max(945, int(data.get("power_watt", 1500)))
-                if power_watt > 7000:
-                    return jsonify({"error": "Fix Watt muss zwischen 945 und 7000 W liegen"}), 400
-        except (TypeError, ValueError):
-            return jsonify({"error": "Fix-Ziel ist ungültig"}), 400
-        cfg_manager.set_override_target(mode, hashrate_th=hashrate_th, power_watt=power_watt)
+        cfg = cfg_manager.get()
+        summer = cfg.get("summer", {})
+        hashrate_th = float(summer.get("high_hashrate_th", 110))
+        power_watt = max(945, int(summer.get("low_power_watt", 945)))
+        cfg_manager.set_override(mode)
         state_patch = {
             "manual_override": mode,
             "command_state": None,
@@ -1841,7 +1796,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         if mode == "fixed_hashrate":
             state_patch.update(
                 decision_title="Fix Hashrate",
-                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit {hashrate_th:.1f} TH/s.",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Tag-Ziel: {hashrate_th:.1f} TH/s.",
                 desired_hashrate_target_th=hashrate_th,
                 desired_power_target_w=None,
                 summer_profile="fixed",
@@ -1850,7 +1805,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         elif mode == "fixed_power":
             state_patch.update(
                 decision_title="Fix Watt",
-                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit {power_watt} W.",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Nacht-Ziel: {power_watt} W.",
                 desired_hashrate_target_th=None,
                 desired_power_target_w=power_watt,
                 summer_profile="fixed",
