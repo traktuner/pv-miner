@@ -393,9 +393,11 @@ class ConfigManager:
             self._write(self._cfg)
         logging.getLogger("config").info("Config saved")
 
-    def set_override(self, mode: str) -> None:
+    def set_override(self, mode: str, *, resume_auto_now: bool = False) -> None:
         with self._lock:
-            self._cfg.setdefault("modes", {})["manual_override"] = mode
+            modes = self._cfg.setdefault("modes", {})
+            modes["manual_override"] = mode
+            modes["resume_auto_now"] = bool(resume_auto_now)
             self._write(self._cfg)
 
 
@@ -1188,7 +1190,7 @@ class PowerController:
             self._summer_profile,
         )
 
-    def _auto_gate(self, desired: str, cfg: dict) -> str:
+    def _auto_gate(self, desired: str, cfg: dict, force_start: bool = False) -> str:
         """Start slowly and stop only after sustained bad conditions."""
         now = time.monotonic()
         if desired == "pause":
@@ -1206,6 +1208,9 @@ class PowerController:
 
         self._stop_since = None
         if self._cur_action == "run":
+            self._start_since = None
+            return "run"
+        if force_start:
             self._start_since = None
             return "run"
 
@@ -1418,6 +1423,8 @@ class PowerController:
 
         self._fronius_err = 0
         nums = self._decision_numbers(pf, cfg, miner_w_now)
+        if override == "auto" and cfg.get("modes", {}).get("resume_auto_now") and (not miner_host or active_mode == "summer_24h"):
+            self._cfg.update({"modes": {"resume_auto_now": False}})
 
         if not miner_host:
             self._state.update(
@@ -1511,9 +1518,15 @@ class PowerController:
             auto_preview_reason = auto_reason
 
         desired, nums, title, reason = self._decide(pf, cfg, miner_w_now)
-        action = desired if override != "auto" else self._auto_gate(desired, cfg)
+        force_auto_start = override == "auto" and bool(cfg.get("modes", {}).get("resume_auto_now"))
+        action = desired if override != "auto" else self._auto_gate(desired, cfg, force_auto_start)
+        if force_auto_start:
+            self._cfg.update({"modes": {"resume_auto_now": False}})
         wait_remaining = None
         stop_wait_remaining = None
+        if force_auto_start and desired == "run" and action == "run":
+            title = "Auto aktiviert"
+            reason = "Auto hat die aktuelle Startbedingung sofort angewendet."
         if override == "auto" and desired == "run" and action == "pause" and self._start_since is not None:
             wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
@@ -1780,10 +1793,11 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         if mode not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return jsonify({"error": "Invalid mode"}), 400
         cfg = cfg_manager.get()
+        previous_mode = cfg.get("modes", {}).get("manual_override", "auto")
         summer = cfg.get("summer", {})
         hashrate_th = float(summer.get("high_hashrate_th", 110))
         power_watt = max(945, int(summer.get("low_power_watt", 945)))
-        cfg_manager.set_override(mode)
+        cfg_manager.set_override(mode, resume_auto_now=(previous_mode == "pause" and mode == "auto"))
         state_patch = {
             "manual_override": mode,
             "command_state": None,
