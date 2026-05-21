@@ -214,9 +214,27 @@ function targetValue(d, desired){
 function cls(card,kind){card.className='card '+(kind||'')}
 let activeMode='battery_auto';
 let decisionTimer=null;
+let pendingOverride=null;
+let overrideTimer=null;
 function setOverrideUi(mode){
   const current=mode||'auto';
   ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('ov-'+m)?.classList.toggle('active',m===current));
+}
+async function sendOverride(mode){
+  try{
+    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+    if(!r.ok){
+      const e=await r.json().catch(()=>({error:'Befehl nicht angenommen'}));
+      el('cmdmsg').className='hint warn';
+      el('cmdmsg').textContent=e.error||'Befehl nicht angenommen';
+    }
+  }catch(e){
+    el('cmdmsg').className='hint warn';
+    el('cmdmsg').textContent='Netzwerkfehler';
+  }finally{
+    if(pendingOverride===mode) pendingOverride=null;
+    fetchStatus();
+  }
 }
 function fmtTimer(seconds){
   const s=Math.max(0,Math.ceil(seconds));
@@ -291,7 +309,7 @@ async function fetchStatus(){
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
     cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
-    setOverrideUi(d.manual_override||'auto');
+    setOverrideUi(pendingOverride||d.manual_override||'auto');
     if(d.command_state==='ok'){el('cmdmsg').className='hint';el('cmdmsg').textContent=d.command_msg||'Befehl bestätigt';}
     else if(d.command_state){el('cmdmsg').className='hint warn';el('cmdmsg').textContent=d.command_msg||'Befehl nicht bestätigt';}
     else el('cmdmsg').textContent='';
@@ -317,19 +335,11 @@ async function saveCfg(){
   setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
 }
 async function setOv(mode){
+  pendingOverride=mode;
   setOverrideUi(mode);
-  try{
-    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-    if(!r.ok){
-      const e=await r.json().catch(()=>({error:'Befehl nicht angenommen'}));
-      el('cmdmsg').className='hint warn';
-      el('cmdmsg').textContent=e.error||'Befehl nicht angenommen';
-    }
-  }catch(e){
-    el('cmdmsg').className='hint warn';
-    el('cmdmsg').textContent='Netzwerkfehler';
-  }
-  fetchStatus();
+  el('cmdmsg').textContent='';
+  if(overrideTimer) clearTimeout(overrideTimer);
+  overrideTimer=setTimeout(()=>{overrideTimer=null;sendOverride(mode);},10000);
 }
 async function doUpdate(){
   const btn=el('btn-update'), msg=el('umsg'); btn.disabled=true; msg.className=''; msg.textContent='Prüfe Update...';
