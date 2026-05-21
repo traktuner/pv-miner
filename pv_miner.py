@@ -1040,6 +1040,32 @@ class PowerController:
     def _preview_title(action: str) -> str:
         return "Mining aktiv" if action == "run" else "Pausieren"
 
+    def _auto_preview_for_fixed(self, pf: dict | None, cfg: dict, miner_w_now: int,
+                                active_mode: str) -> tuple[str, str, str]:
+        if pf is None:
+            if active_mode == "summer_24h":
+                auto_state = self._decide_summer(None, cfg, miner_w_now)
+                return auto_state.action, self._preview_title(auto_state.action), auto_state.reason
+            return "pause", "Pausieren", "Ohne Wechselrichterdaten würde Auto sicherheitshalber pausieren."
+
+        if active_mode == "summer_24h":
+            saved_profile = self._summer_profile
+            saved_since = self._summer_switch_since
+            try:
+                auto_state = self._decide_summer(pf, cfg, miner_w_now)
+                return auto_state.action, self._preview_title(auto_state.action), auto_state.reason
+            finally:
+                self._summer_profile = saved_profile
+                self._summer_switch_since = saved_since
+
+        auto_desired, _nums, _title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
+        auto_action = self._peek_auto_gate(auto_desired, cfg)
+        if auto_desired == "run" and auto_action == "pause":
+            return auto_action, "Start wartet", "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
+        if auto_desired == "pause" and auto_action == "run":
+            return auto_action, "Mining bleibt aktiv", "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
+        return auto_action, self._preview_title(auto_action), auto_reason
+
     @staticmethod
     def _mode(cfg: dict) -> str:
         mode = cfg.get("mode", {}).get("active", "battery_auto")
@@ -1350,6 +1376,7 @@ class PowerController:
                 miner_w_now,
             ))
             if fixed_state is not None and miner_host:
+                auto_action, auto_title, auto_reason = self._auto_preview_for_fixed(None, cfg, miner_w_now, active_mode)
                 self._state.update(
                     miner_power_w=miner_w_now if miner_st else None,
                     hashrate_target_th=current_hashrate_th,
@@ -1367,9 +1394,9 @@ class PowerController:
                     poll_interval_seconds=poll_interval,
                     decision_title=fixed_state.title,
                     decision_reason=fixed_state.reason,
-                    auto_preview_action=None,
-                    auto_preview_title=None,
-                    auto_preview_reason="Auto ist aktuell übersteuert.",
+                    auto_preview_action=auto_action,
+                    auto_preview_title=auto_title,
+                    auto_preview_reason=auto_reason,
                     **fixed_state.nums,
                 )
                 self._apply_desired(fixed_state, current_hashrate_th, current_power_target_w, current_target_kind)
@@ -1444,6 +1471,7 @@ class PowerController:
 
         fixed_state = self._fixed_override_state(cfg, nums)
         if fixed_state is not None:
+            auto_action, auto_title, auto_reason = self._auto_preview_for_fixed(pf, cfg, miner_w_now, active_mode)
             self._state.update(
                 soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
                 miner_power_w=miner_w_now if miner_st else None,
@@ -1461,9 +1489,9 @@ class PowerController:
                 poll_interval_seconds=poll_interval,
                 decision_title=fixed_state.title,
                 decision_reason=fixed_state.reason,
-                auto_preview_action=None,
-                auto_preview_title=None,
-                auto_preview_reason="Auto ist aktuell übersteuert.",
+                auto_preview_action=auto_action,
+                auto_preview_title=auto_title,
+                auto_preview_reason=auto_reason,
                 **fixed_state.nums,
             )
             self._log.info("[cycle] override=%s target=%s/%s → %s",
@@ -1815,6 +1843,8 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
                 desired_power_target_w=None,
                 summer_profile="fixed",
                 summer_target_kind="hashrate",
+                auto_preview_title="Wird geprüft",
+                auto_preview_reason="Auto-Vorschau wird mit dem nächsten Messzyklus aktualisiert.",
             )
         elif mode == "fixed_power":
             state_patch.update(
@@ -1824,6 +1854,8 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
                 desired_power_target_w=power_watt,
                 summer_profile="fixed",
                 summer_target_kind="power",
+                auto_preview_title="Wird geprüft",
+                auto_preview_reason="Auto-Vorschau wird mit dem nächsten Messzyklus aktualisiert.",
             )
         state.update(**state_patch)
         logging.getLogger("cycle").info("Override: %s", mode)
