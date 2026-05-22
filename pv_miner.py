@@ -124,14 +124,15 @@ HTML_PAGE = """<!DOCTYPE html>
 
   <div class="grid">
     <section>
-      <h3>Steuerung</h3>
+      <h3>Aktiver Laufmodus</h3>
       <div class="ov-row">
-        <button id="ov-auto" onclick="setOv('auto')">Auto</button>
-        <button id="ov-pause" onclick="setOv('pause')">Pause</button>
-        <button id="ov-fixed_hashrate" onclick="setOv('fixed_hashrate')">Fix Hashrate</button>
-        <button id="ov-fixed_power" onclick="setOv('fixed_power')">Fix Watt</button>
+        <button id="run-battery_auto" onclick="setRunMode('battery_auto')">Akku-Auto</button>
+        <button id="run-summer_24h" onclick="setRunMode('summer_24h')">PV-Sommer</button>
+        <button id="run-pause" onclick="setRunMode('pause')">Pause</button>
+        <button id="run-fixed_hashrate" onclick="setRunMode('fixed_hashrate')">Fix Hashrate</button>
+        <button id="run-fixed_power" onclick="setRunMode('fixed_power')">Fix Watt</button>
       </div>
-      <div class="hint" style="margin-top:10px">Auto folgt dem gewählten Betriebsmodus. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel aus den Einstellungen, Fix Watt das Nacht-Ziel.</div>
+      <div class="hint" style="margin-top:10px">Akku-Auto und PV-Sommer sind automatische Profile. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel, Fix Watt das Nacht-Ziel.</div>
       <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
       <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
@@ -157,12 +158,12 @@ HTML_PAGE = """<!DOCTYPE html>
   </section>
 
   <section>
-    <h3>Betriebsmodus</h3>
+    <h3>Profile konfigurieren</h3>
     <div class="ov-row">
-      <button id="mode-battery" onclick="setMode('battery_auto')">Akku-Auto</button>
-      <button id="mode-summer" onclick="setMode('summer_24h')">PV-Sommer 24h</button>
+      <button id="profile-battery" onclick="showProfile('battery_auto')">Akku-Auto</button>
+      <button id="profile-summer" onclick="showProfile('summer_24h')">PV-Sommer 24h</button>
     </div>
-    <div class="hint" style="margin-top:10px" id="mode-hint">Akku-Auto pausiert/startet nach Akku- und PV-Regeln. PV-Sommer 24h minet dauerhaft: tags Hashrate Target, abends Power Target.</div>
+    <div class="hint" style="margin-top:10px" id="profile-hint">Hier werden nur die Profile konfiguriert. Aktivieren passiert auf der Live-Seite.</div>
   </section>
 
   <section id="settings-battery">
@@ -213,16 +214,31 @@ function targetValue(d, desired){
 }
 function cls(card,kind){card.className='card '+(kind||'')}
 let activeMode='battery_auto';
+let configProfile=null;
 let decisionTimer=null;
-let pendingOverride=null;
-let overrideTimer=null;
-function setOverrideUi(mode){
-  const current=mode||'auto';
-  ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('ov-'+m)?.classList.toggle('active',m===current));
+let pendingRunMode=null;
+let runModeTimer=null;
+function runKey(active,override){
+  return (override&&override!=='auto')?override:(active||'battery_auto');
 }
-async function sendOverride(mode){
+function setRunUi(mode){
+  const current=mode||'battery_auto';
+  ['battery_auto','summer_24h','pause','fixed_hashrate','fixed_power'].forEach(m=>el('run-'+m)?.classList.toggle('active',m===current));
+}
+function showProfile(profile){
+  configProfile=profile||'battery_auto';
+  el('profile-battery')?.classList.toggle('active',configProfile==='battery_auto');
+  el('profile-summer')?.classList.toggle('active',configProfile==='summer_24h');
+  el('settings-battery').style.display=configProfile==='battery_auto'?'block':'none';
+  el('settings-summer').style.display=configProfile==='summer_24h'?'block':'none';
+  el('profile-hint').textContent=configProfile==='summer_24h'?'Konfiguriert PV-Sommer. Aktivieren passiert auf der Live-Seite.':'Konfiguriert Akku-Auto. Aktivieren passiert auf der Live-Seite.';
+}
+async function sendRunMode(mode){
+  const body={mode};
+  if(mode==='battery_auto'||mode==='summer_24h'){body.active_mode=mode;body.override='auto';}
+  else{body.override=mode;}
   try{
-    const r=await fetch('/api/override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
+    const r=await fetch('/api/run-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok){
       const e=await r.json().catch(()=>({error:'Befehl nicht angenommen'}));
       el('cmdmsg').className='hint warn';
@@ -232,7 +248,7 @@ async function sendOverride(mode){
     el('cmdmsg').className='hint warn';
     el('cmdmsg').textContent='Netzwerkfehler';
   }finally{
-    if(pendingOverride===mode) pendingOverride=null;
+    if(pendingRunMode===mode) pendingRunMode=null;
     fetchStatus();
   }
 }
@@ -264,14 +280,6 @@ function renderDecisionReason(){
   if(!decisionTimer){return;}
   const left=Math.max(0,decisionTimer.remaining-((Date.now()-decisionTimer.started)/1000));
   el('decision-reason').textContent=decisionTimer.base.replace(decisionTimer.re,decisionTimer.text(left));
-}
-function setMode(mode){
-  activeMode=mode;
-  el('mode-battery')?.classList.toggle('active',mode==='battery_auto');
-  el('mode-summer')?.classList.toggle('active',mode==='summer_24h');
-  el('settings-battery').style.display=mode==='battery_auto'?'block':'none';
-  el('settings-summer').style.display=mode==='summer_24h'?'block':'none';
-  el('mode-hint').textContent=mode==='summer_24h'?'PV-Sommer 24h minet dauerhaft: Tag setzt Hashrate Target, Nacht setzt Power Target.':'Akku-Auto startet und pausiert nach Akku-, PV- und Netzregeln.';
 }
 function updateConfigHints(){
   const m=n('f-mneed',2800), b=n('f-bcl',2000), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100), gridtol=n('f-gridtol',300);
@@ -309,7 +317,8 @@ async function fetchStatus(){
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
     cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
-    setOverrideUi(pendingOverride||d.manual_override||'auto');
+    if(!pendingRunMode) activeMode=d.active_mode||'battery_auto';
+    setRunUi(pendingRunMode||runKey(d.active_mode,d.manual_override));
     if(d.command_state==='ok'){el('cmdmsg').className='hint';el('cmdmsg').textContent=d.command_msg||'Befehl bestätigt';}
     else if(d.command_state){el('cmdmsg').className='hint warn';el('cmdmsg').textContent=d.command_msg||'Befehl nicht bestätigt';}
     else el('cmdmsg').textContent='';
@@ -318,7 +327,8 @@ async function fetchStatus(){
 }
 async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
-    setMode(d.mode?.active||'battery_auto');
+    activeMode=d.mode?.active||'battery_auto';
+    showProfile(configProfile||activeMode);
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
     el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
@@ -327,19 +337,19 @@ async function fetchCfg(){
   }catch(e){}
 }
 async function saveCfg(){
-  const msg=activeMode==='summer_24h'?el('smsg2'):el('smsg');
+  const msg=(configProfile||'battery_auto')==='summer_24h'?el('smsg2'):el('smsg');
   const loww=Math.max(945,n('f-loww',945)); el('f-loww').value=loww;
   const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:loww,switch_stable_minutes:n('f-switchmin',5)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
 }
-async function setOv(mode){
-  pendingOverride=mode;
-  setOverrideUi(mode);
+async function setRunMode(mode){
+  pendingRunMode=mode;
+  setRunUi(mode);
   el('cmdmsg').textContent='';
-  if(overrideTimer) clearTimeout(overrideTimer);
-  overrideTimer=setTimeout(()=>{overrideTimer=null;sendOverride(mode);},10000);
+  if(runModeTimer) clearTimeout(runModeTimer);
+  runModeTimer=setTimeout(()=>{runModeTimer=null;sendRunMode(mode);},10000);
 }
 async function doUpdate(){
   const btn=el('btn-update'), msg=el('umsg'); btn.disabled=true; msg.className=''; msg.textContent='Prüfe Update...';
@@ -408,6 +418,18 @@ class ConfigManager:
         with self._lock:
             modes = self._cfg.setdefault("modes", {})
             modes["manual_override"] = mode
+            modes["resume_auto_now"] = bool(resume_auto_now)
+            modes["sync_summer_profile_now"] = bool(sync_summer_profile_now)
+            self._write(self._cfg)
+
+    def set_run_mode(self, *, active_mode: str | None, override: str,
+                     resume_auto_now: bool = False,
+                     sync_summer_profile_now: bool = False) -> None:
+        with self._lock:
+            if active_mode is not None:
+                self._cfg.setdefault("mode", {})["active"] = active_mode
+            modes = self._cfg.setdefault("modes", {})
+            modes["manual_override"] = override
             modes["resume_auto_now"] = bool(resume_auto_now)
             modes["sync_summer_profile_now"] = bool(sync_summer_profile_now)
             self._write(self._cfg)
@@ -1830,6 +1852,63 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
 
         logging.getLogger("main").info("Update installed via web UI: %s", expected_hash)
         return jsonify({"ok": True, "updated": True, "sha256": expected_hash})
+
+    @app.route("/api/run-mode", methods=["POST"])
+    def api_run_mode():
+        data = request.get_json(silent=True) or {}
+        override = data.get("override", data.get("mode", "auto"))
+        active_mode = data.get("active_mode")
+        if override not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
+            return jsonify({"error": "Invalid mode"}), 400
+        if active_mode is not None and active_mode not in ("battery_auto", "summer_24h"):
+            return jsonify({"error": "Invalid active mode"}), 400
+
+        cfg = cfg_manager.get()
+        previous_mode = cfg.get("modes", {}).get("manual_override", "auto")
+        previous_active = cfg.get("mode", {}).get("active", "battery_auto")
+        summer = cfg.get("summer", {})
+        hashrate_th = float(summer.get("high_hashrate_th", 110))
+        power_watt = max(945, int(summer.get("low_power_watt", 945)))
+        sync_summer = (
+            override == "auto"
+            and active_mode == "summer_24h"
+            and (previous_mode != "auto" or previous_active != "summer_24h")
+        )
+        cfg_manager.set_run_mode(
+            active_mode=active_mode,
+            override=override,
+            resume_auto_now=(previous_mode == "pause" and override == "auto"),
+            sync_summer_profile_now=sync_summer,
+        )
+        state_patch = {
+            "manual_override": override,
+            "active_mode": active_mode or previous_active,
+            "command_state": None,
+            "command_msg": None,
+            "desired_hashrate_target_th": None,
+            "desired_power_target_w": None,
+            "summer_profile": None,
+            "summer_target_kind": None,
+        }
+        if override == "fixed_hashrate":
+            state_patch.update(
+                decision_title="Fix Hashrate",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Tag-Ziel: {hashrate_th:.1f} TH/s.",
+                desired_hashrate_target_th=hashrate_th,
+                summer_profile="fixed",
+                summer_target_kind="hashrate",
+            )
+        elif override == "fixed_power":
+            state_patch.update(
+                decision_title="Fix Watt",
+                decision_reason=f"Automatik ist aus. Der Miner läuft dauerhaft mit dem Nacht-Ziel: {power_watt} W.",
+                desired_power_target_w=power_watt,
+                summer_profile="fixed",
+                summer_target_kind="power",
+            )
+        state.update(**state_patch)
+        logging.getLogger("cycle").info("Run mode: active=%s override=%s", active_mode or previous_active, override)
+        return jsonify({"ok": True})
 
     @app.route("/api/override", methods=["POST"])
     def api_override():
