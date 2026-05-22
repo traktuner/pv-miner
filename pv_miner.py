@@ -403,11 +403,13 @@ class ConfigManager:
             self._write(self._cfg)
         logging.getLogger("config").info("Config saved")
 
-    def set_override(self, mode: str, *, resume_auto_now: bool = False) -> None:
+    def set_override(self, mode: str, *, resume_auto_now: bool = False,
+                     sync_summer_profile_now: bool = False) -> None:
         with self._lock:
             modes = self._cfg.setdefault("modes", {})
             modes["manual_override"] = mode
             modes["resume_auto_now"] = bool(resume_auto_now)
+            modes["sync_summer_profile_now"] = bool(sync_summer_profile_now)
             self._write(self._cfg)
 
 
@@ -1460,6 +1462,10 @@ class PowerController:
 
         self._fronius_err = 0
         nums = self._decision_numbers(pf, cfg, miner_w_now)
+        if override == "auto" and active_mode == "summer_24h" and cfg.get("modes", {}).get("sync_summer_profile_now"):
+            self._summer_profile = self._summer_profile_from_pv(pf, cfg)
+            self._summer_switch_since = None
+            self._cfg.update({"modes": {"sync_summer_profile_now": False}})
         if override == "auto" and cfg.get("modes", {}).get("resume_auto_now") and (not miner_host or active_mode == "summer_24h"):
             self._cfg.update({"modes": {"resume_auto_now": False}})
 
@@ -1664,6 +1670,7 @@ def normalize_config_patch(data: dict) -> None:
         modes["manual_override"] = "auto"
     modes.pop("fixed_hashrate_th", None)
     modes.pop("fixed_power_watt", None)
+    modes.pop("sync_summer_profile_now", None)
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -1835,7 +1842,11 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         summer = cfg.get("summer", {})
         hashrate_th = float(summer.get("high_hashrate_th", 110))
         power_watt = max(945, int(summer.get("low_power_watt", 945)))
-        cfg_manager.set_override(mode, resume_auto_now=(previous_mode == "pause" and mode == "auto"))
+        cfg_manager.set_override(
+            mode,
+            resume_auto_now=(previous_mode == "pause" and mode == "auto"),
+            sync_summer_profile_now=(previous_mode != "auto" and mode == "auto"),
+        )
         state_patch = {
             "manual_override": mode,
             "command_state": None,
