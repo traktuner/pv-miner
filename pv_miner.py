@@ -177,11 +177,11 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="fg">
       <div class="field"><label><input id="f-en-start-soc" type="checkbox" onchange="updateConfigHints()"> Start erst ab Akku-SOC</label><input id="f-start-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-start-soc">Wenn aktiv, startet Auto erst ab diesem Akku-Stand.</div></div>
       <div class="field"><label><input id="f-en-start-charge" type="checkbox" onchange="updateConfigHints()"> Start erst bei Akku-Ladung</label><input id="f-start-charge" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-start-charge">Wenn aktiv, startet Auto erst, wenn der Akku mindestens so stark lädt.</div></div>
-      <div class="field"><label><input id="f-en-pause-soc" type="checkbox" onchange="updateConfigHints()"> Pause unter Akku-SOC</label><input id="f-pause-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-pause-soc">Wenn aktiv, pausiert Auto nach Stop-Timer unter diesem Akku-Stand.</div></div>
-      <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto nach Stop-Timer bei stärkerer Akku-Entladung.</div></div>
-      <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto nach Stop-Timer bei dauerhaftem Netzbezug.</div></div>
+      <div class="field"><label><input id="f-en-pause-soc" type="checkbox" onchange="updateConfigHints()"> Pause unter Akku-SOC</label><input id="f-pause-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-pause-soc">Wenn aktiv, pausiert Auto sofort unter diesem Akku-Stand.</div></div>
+      <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto verzögert bei stärkerer Akku-Entladung.</div></div>
+      <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto verzögert bei dauerhaftem Netzbezug.</div></div>
       <div class="field"><label>Start erst nach stabiler Lage (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Gilt nur, wenn Auto gerade nicht läuft und die Start-Regeln erfüllt werden.</div></div>
-      <div class="field"><label>Pause erst nach Lastspitze (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für aktivierte Pause-Regeln.</div></div>
+      <div class="field"><label>Pause-Verzögerung für Watt-Regeln (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für Akku-Entladung und Netzbezug. SOC-Schutz pausiert sofort.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
   </section>
@@ -269,9 +269,9 @@ function updateConfigHints(){
   const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=Math.max(945,n('f-loww',945)), sw=n('f-switchmin',5);
   el('h-start-soc').innerHTML=`${el('f-en-start-soc').checked?'Aktiv':'Aus'}: Start erst ab <em>${ssoc}%</em> Akku.`;
   el('h-start-charge').innerHTML=`${el('f-en-start-charge').checked?'Aktiv':'Aus'}: Start erst, wenn der Akku mindestens <em>${scharge} W</em> lädt.`;
-  el('h-pause-soc').innerHTML=`${el('f-en-pause-soc').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer unter <em>${psoc}%</em> Akku.`;
-  el('h-pause-discharge').innerHTML=`${el('f-en-pause-discharge').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer bei Akku-Entladung über <em>${pdis} W</em>.`;
-  el('h-pause-grid').innerHTML=`${el('f-en-pause-grid').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer bei Netzbezug über <em>${pgrid} W</em>.`;
+  el('h-pause-soc').innerHTML=`${el('f-en-pause-soc').checked?'Aktiv':'Aus'}: Pause sofort unter <em>${psoc}%</em> Akku.`;
+  el('h-pause-discharge').innerHTML=`${el('f-en-pause-discharge').checked?'Aktiv':'Aus'}: Pause verzögert bei Akku-Entladung über <em>${pdis} W</em>.`;
+  el('h-pause-grid').innerHTML=`${el('f-en-pause-grid').checked?'Aktiv':'Aus'}: Pause verzögert bei Netzbezug über <em>${pgrid} W</em>.`;
   el('h-daypv').innerHTML=`Ab <em>${(day/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf High gewechselt.`;
   el('h-nightpv').innerHTML=`Unter <em>${(night/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf Low gewechselt.`;
   el('h-highth').innerHTML=`Tag-Ziel: <em>${hi.toFixed(1)} TH/s</em>.`;
@@ -924,6 +924,7 @@ class DesiredState:
     hashrate_target_th: float | None = None
     power_target_w: int | None = None
     profile: str | None = None
+    immediate_pause: bool = False
 
     @property
     def target_kind(self) -> str | None:
@@ -997,34 +998,46 @@ class PowerController:
                 failures.append(f"Akku lädt nur mit {charge:.0f} W statt {limit} W")
         return failures
 
-    def _pause_rule_failures(self, pf: dict, cfg: dict) -> list[str]:
+    def _pause_rule_failures(self, pf: dict, cfg: dict) -> tuple[list[str], list[str]]:
         ctrl = cfg.get("control", {})
-        failures: list[str] = []
+        immediate: list[str] = []
+        delayed: list[str] = []
         if self._enabled(ctrl, "enable_pause_soc"):
             limit = float(ctrl.get("pause_soc_percent", 30))
             if pf["soc"] < limit:
-                failures.append(f"Akku-SOC {pf['soc']:.1f}% unter {limit:g}%")
+                immediate.append(f"Akku-SOC {pf['soc']:.1f}% unter {limit:g}%")
         if self._enabled(ctrl, "enable_pause_battery_discharge"):
             limit = int(ctrl.get("pause_battery_discharge_watt", 300))
             if pf["p_akku"] > limit:
-                failures.append(f"Akku entlädt mit {pf['p_akku']:.0f} W über {limit} W")
+                delayed.append(f"Akku entlädt mit {pf['p_akku']:.0f} W über {limit} W")
         if self._enabled(ctrl, "enable_pause_grid_import"):
             limit = int(ctrl.get("pause_grid_import_watt", 300))
             if pf["p_grid"] > limit:
-                failures.append(f"Netzbezug {pf['p_grid']:.0f} W über {limit} W")
-        return failures
+                delayed.append(f"Netzbezug {pf['p_grid']:.0f} W über {limit} W")
+        return immediate, delayed
 
     def _decide_auto(self, pf: dict, cfg: dict, miner_w_now: int) -> DesiredState:
         base = self._decide_summer(pf, cfg, miner_w_now)
         nums = base.nums
 
         if self._cur_action == "run":
-            pause_failures = self._pause_rule_failures(pf, cfg)
-            if pause_failures:
+            immediate_failures, delayed_failures = self._pause_rule_failures(pf, cfg)
+            if immediate_failures:
                 return DesiredState(
                     "pause",
-                    "Schutzregel aktiv",
-                    f"{self._rule_list_text(pause_failures)}. Automatik pausiert erst, wenn das länger anhält.",
+                    "Akku-Schutz aktiv",
+                    f"{self._rule_list_text(immediate_failures)}. Miner pausiert sofort.",
+                    nums,
+                    hashrate_target_th=base.hashrate_target_th,
+                    power_target_w=base.power_target_w,
+                    profile=base.profile,
+                    immediate_pause=True,
+                )
+            if delayed_failures:
+                return DesiredState(
+                    "pause",
+                    "Watt-Regel aktiv",
+                    f"{self._rule_list_text(delayed_failures)}. Automatik pausiert erst, wenn das länger anhält.",
                     nums,
                     hashrate_target_th=base.hashrate_target_th,
                     power_target_w=base.power_target_w,
@@ -1045,10 +1058,12 @@ class PowerController:
             )
         return base
 
-    def _peek_auto_gate(self, desired: str, cfg: dict) -> str:
+    def _peek_auto_gate(self, desired: str, cfg: dict, immediate_pause: bool = False) -> str:
         """Return what Auto would do now without mutating timers."""
         now = time.monotonic()
         if desired == "pause":
+            if immediate_pause:
+                return "pause"
             if self._cur_action != "run":
                 return "pause"
             wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
@@ -1080,7 +1095,7 @@ class PowerController:
             self._summer_profile = saved_profile
             self._summer_switch_since = saved_since
 
-        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg)
+        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg, auto_desired_state.immediate_pause)
         if auto_desired_state.action == "run" and auto_action == "pause":
             return auto_action, "Start wartet", "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
         if auto_desired_state.action == "pause" and auto_action == "run":
@@ -1233,11 +1248,15 @@ class PowerController:
             self._summer_profile,
         )
 
-    def _auto_gate(self, desired: str, cfg: dict, force_start: bool = False) -> str:
+    def _auto_gate(self, desired: str, cfg: dict, force_start: bool = False,
+                   immediate_pause: bool = False) -> str:
         """Start slowly and stop only after sustained bad conditions."""
         now = time.monotonic()
         if desired == "pause":
             self._start_since = None
+            if immediate_pause:
+                self._stop_since = None
+                return "pause"
             if self._cur_action != "run":
                 self._stop_since = None
                 return "pause"
@@ -1499,7 +1518,7 @@ class PowerController:
             return
 
         auto_desired_state = self._decide_auto(pf, cfg, miner_w_now)
-        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg)
+        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg, auto_desired_state.immediate_pause)
         if auto_desired_state.action == "run" and auto_action == "pause":
             auto_preview_title = "Start wartet"
             auto_preview_reason = "Startbedingung erfüllt. Beim Umschalten auf Auto startet der Miner erst nach stabiler Sonne."
@@ -1511,7 +1530,12 @@ class PowerController:
             auto_preview_reason = auto_desired_state.reason
 
         force_auto_start = override == "auto" and bool(cfg.get("modes", {}).get("resume_auto_now"))
-        action = self._auto_gate(auto_desired_state.action, cfg, force_auto_start)
+        action = self._auto_gate(
+            auto_desired_state.action,
+            cfg,
+            force_auto_start,
+            auto_desired_state.immediate_pause,
+        )
         if force_auto_start:
             self._cfg.update({"modes": {"resume_auto_now": False}})
         desired_state = DesiredState(
@@ -1522,6 +1546,7 @@ class PowerController:
             hashrate_target_th=auto_desired_state.hashrate_target_th,
             power_target_w=auto_desired_state.power_target_w,
             profile=auto_desired_state.profile,
+            immediate_pause=auto_desired_state.immediate_pause,
         )
         nums = desired_state.nums
         title = desired_state.title
@@ -1536,10 +1561,13 @@ class PowerController:
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
             title = "Warte auf stabile Sonne"
             reason = f"Startbedingung erfüllt. Miner startet in {wait_remaining // 60}:{wait_remaining % 60:02d}, wenn genug PV stabil bleibt."
-        if override == "auto" and auto_desired_state.action == "pause" and action == "run" and self._stop_since is not None:
+        if override == "auto" and auto_desired_state.action == "pause" and action == "pause" and auto_desired_state.immediate_pause:
+            title = auto_desired_state.title
+            reason = auto_desired_state.reason
+        elif override == "auto" and auto_desired_state.action == "pause" and action == "run" and self._stop_since is not None:
             wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
             stop_wait_remaining = max(0, int(wait_s - (time.monotonic() - self._stop_since)))
-            title = "Lastspitze wird toleriert"
+            title = "Watt-Spitze wird toleriert"
             reason = f"Miner läuft weiter. Auto pausiert erst in {stop_wait_remaining // 60}:{stop_wait_remaining % 60:02d}, wenn der Zustand anhält."
 
         self._state.update(
@@ -1591,6 +1619,12 @@ def validate_config_patch(data: dict) -> str | None:
             return "Start-Akkuladung muss zwischen 0 und 30000 W liegen"
         if not (0 <= float(ctrl.get("pause_soc_percent", 30)) <= 100):
             return "Pause-SOC muss zwischen 0 und 100% liegen"
+        if (
+            bool(ctrl.get("enable_start_soc"))
+            and bool(ctrl.get("enable_pause_soc"))
+            and float(ctrl.get("start_soc_percent", 80)) <= float(ctrl.get("pause_soc_percent", 30))
+        ):
+            return "Start-SOC muss höher sein als Pause-SOC, sonst kann Auto direkt wieder stoppen"
         if not (0 <= int(ctrl.get("pause_battery_discharge_watt", 300)) <= 10000):
             return "Akku-Entladung muss zwischen 0 und 10000 W liegen"
         if not (0 <= int(ctrl.get("pause_grid_import_watt", 300)) <= 10000):

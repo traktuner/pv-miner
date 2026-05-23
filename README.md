@@ -46,7 +46,7 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
   - pause when the battery discharges above a configured watt value
   - pause when grid import stays above a configured watt value
 - **Start erst nach stabiler Lage** — start delay after a pause, default `5 min`
-- **Pause erst nach Lastspitze** — delay before pausing on enabled pause rules, default `3 min`
+- **Pause-Verzögerung für Watt-Regeln** — delay before pausing on battery-discharge or grid-import rules, default `3 min`; SOC protection pauses immediately
 
 ## Docker
 
@@ -82,14 +82,17 @@ if miner is stopped and any enabled start rule is not fulfilled:
 if miner is stopped and all enabled start rules are fulfilled for start_stable_minutes:
   resume miner and apply target
 
-if miner is running and any enabled pause rule is violated for stop_stable_minutes:
+if miner is running and enabled pause_soc is violated:
+  pause miner immediately
+
+if miner is running and enabled watt pause rule is violated for stop_stable_minutes:
   pause miner
 
 if miner is running and no enabled pause rule is violated:
   keep mining and apply target changes when needed
 ```
 
-Start rules only gate starting; they do not stop a running miner. Pause rules are separate and only stop after `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
+Start rules only gate starting; they do not stop a running miner. SOC pause is a hard battery guard and pauses immediately. Watt pause rules for battery discharge and grid import are delayed by `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. If both start SOC and pause SOC are enabled, start SOC must be higher than pause SOC to avoid restart/stop chatter at one threshold. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
 Target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target. Settings saves only update `/data/config.json`; miner API calls are made later by the single control loop, one desired state at a time.
 
