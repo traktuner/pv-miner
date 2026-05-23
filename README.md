@@ -2,7 +2,7 @@
 
 Controls an Antminer S19j Pro (Braiins OS) based on PV production and battery data from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
 
-**Modes:** Akku-Auto pauses/resumes the miner so the battery keeps priority. PV-Sommer 24h mines continuously, uses a Braiins OS hashrate target during the day, and uses a lower power target in the evening/night. pv-miner never changes autotuning mode or fan settings.
+**Modes:** Auto mines continuously by default, uses a Braiins OS hashrate target during the day, and uses a lower power target in the evening/night. Optional battery and grid rules can delay starts or pause mining. Pause, Fix Hashrate, and Fix Watt are manual overrides. pv-miner never changes fan settings.
 
 ## One-line install
 
@@ -38,13 +38,15 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **2. Wechselrichter IP** — optional; a second inverter (e.g. a Symo) that is *not* linked to the hybrid. Its PV is invisible to the hybrid's local API, so pv-miner queries it separately and adds it. Leave empty with a single inverter.
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
-- **Miner benötigt** — expected miner draw while starting/ramping, minimum `2500 W`, default `2800 W`
-- **Akku-Ladeziel** — minimum charge power the battery should still get before the miner starts, default `2000 W`
-- **Akku gilt als voll ab** — SOC threshold where the battery reserve drops away, default `100%`
-- **Sicherheitspuffer** — extra PV margin, default `200 W`
-- **Start erst nach stabiler Sonne** — start delay after a pause, default `5 min`
-- **Stop erst nach Lastspitze** — delay before pausing on sustained battery discharge or grid import, default `3 min`
-- **PV-Sommer 24h** — optional mode: default `110 TH/s` above `4000 W` PV, `945 W` power target below `2000 W` PV, switching after `5 min` stable PV
+- **Automatik** — default `110 TH/s` above `4000 W` PV, `945 W` power target below `2000 W` PV, switching after `5 min` stable PV
+- **Optionale Akku- und Netzregeln** — independently enable start guards and pause guards:
+  - start only above a configured battery SOC
+  - start only while the battery charges with at least a configured watt value
+  - pause below a configured battery SOC
+  - pause when the battery discharges above a configured watt value
+  - pause when grid import stays above a configured watt value
+- **Start erst nach stabiler Lage** — start delay after a pause, default `5 min`
+- **Pause erst nach Lastspitze** — delay before pausing on enabled pause rules, default `3 min`
 
 ## Docker
 
@@ -65,64 +67,49 @@ Docker updates are done by pulling a new image and recreating the container. The
 
 ## Control logic
 
-There are two clear automatic modes.
-
-**Akku-Auto**
-
-```
-house_without_miner = abs(P_Load) - current_miner_power
-
-if battery is not full:
-  start_required_pv = house_without_miner + battery_charge_target + expected_miner_power + buffer
-
-if battery is full:
-  start_required_pv = house_without_miner + expected_miner_power + buffer
-
-if miner is stopped and P_PV >= start_required_pv for start_stable_minutes:
-  run
-
-if miner is running and battery is not discharging and grid import stays below tolerance:
-  run
-
-if battery discharge or grid import stays too high for stop_stable_minutes:
-  pause
-```
-
-Starting is deliberately conservative: after a pause, the start condition must stay true for `start_stable_minutes` (default 5 minutes) before pv-miner starts the miner again. Stopping is deliberately less nervous: short heat-pump or household load spikes are tolerated, and pv-miner pauses only if battery discharge or grid import remains too high for `stop_stable_minutes` (default 3 minutes). Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
-
-**PV-Sommer 24h**
+There is one automatic mode with optional battery and grid rules.
 
 ```
 if P_PV >= day_pv_threshold for switch_stable_minutes:
-  resume miner
-  set hashrate target to high_hashrate_th
+  target = high_hashrate_th
 
 if P_PV <= night_pv_threshold for switch_stable_minutes:
-  resume miner
-  set power target to low_power_watt
+  target = low_power_watt
 
-if Fronius is temporarily unavailable:
-  keep mining and hold the last known summer target
+if miner is stopped and any enabled start rule is not fulfilled:
+  keep paused
+
+if miner is stopped and all enabled start rules are fulfilled for start_stable_minutes:
+  resume miner and apply target
+
+if miner is running and any enabled pause rule is violated for stop_stable_minutes:
+  pause miner
+
+if miner is running and no enabled pause rule is violated:
+  keep mining and apply target changes when needed
 ```
 
-Summer target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target.
+Start rules only gate starting; they do not stop a running miner. Pause rules are separate and only stop after `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
-The **Live** page shows the current decision, the calculated start threshold or active summer target, house load without miner, battery charge target, miner estimate and buffer. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
+Target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target. Settings saves only update `/data/config.json`; miner API calls are made later by the single control loop, one desired state at a time.
+
+The **Live** page shows the current decision, active target, PV profile, house load without miner, and timers. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
 
 - Fronius: `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi`; `P_Grid < 0` means grid export, `P_Akku > 0` means battery discharge, and `P_Akku < 0` means battery charging. SOC is read from the first inverter entry that contains `SOC`; if none is present, the miner is paused for safety. If a second inverter is configured, its `Site.P_PV` is added and the house load is recomputed from the whole-house balance `P_Load = -(P_Grid + P_Akku + P_PV)`.
-- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads performance targets from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, switches summer target type with `PUT /api/v1/performance/mode`, and writes same-type target changes with `PUT /api/v1/performance/hashrate-target` / `PUT /api/v1/performance/power-target`. Autotuning mode and fans are never written.
+- Braiins OS: Public API (REST) at `/api/v1`. pv-miner logs in via `POST /api/v1/auth/login` as `root`; the returned token is sent in the `authorization` header (no "Bearer" prefix, auto-refreshed). It uses `PUT /api/v1/actions/pause` and `PUT /api/v1/actions/resume`, reads `GET /api/v1/miner/details` (`status`: 2 = mining, 3 = paused, 1 = idle), `GET /api/v1/miner/stats` (`power_stats.approximated_consumption.watt`), reads performance targets from `GET /api/v1/performance/mode` / `GET /api/v1/performance/tuner-state`, switches target type with `PUT /api/v1/performance/mode`, and writes same-type target changes with `PUT /api/v1/performance/hashrate-target` / `PUT /api/v1/performance/power-target`. Fans are never written.
 
 ## Override buttons
 
-The **Override** buttons force a state immediately, bypassing the automatic logic until you switch back to Auto:
+The **Live** buttons change the active runtime mode. Changes are debounced for 10 seconds so accidental clicks do not spam the miner API:
 
 | Button | Effect |
 |---|---|
-| Auto | Battery-first automatic control |
-| Pause erzwingen | Force pause |
-| Start erzwingen | Force the miner to run, regardless of surplus |
+| Auto | Tag/Nacht automatic control with optional battery/grid rules |
+| Pause | Force pause |
+| Fix Hashrate | Mine permanently with the configured Tag Hashrate Target |
+| Fix Watt | Mine permanently with the configured Nacht Power Target |
 
 ## Customising the install
 

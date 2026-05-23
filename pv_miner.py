@@ -40,11 +40,16 @@ DEFAULT_CONFIG: dict = {
         "expected_power_watt": 2800,
     },
     "control": {
-        "battery_full_soc": 100,
-        "battery_charge_target_watt": 2000,
-        "grid_buffer_watt": 200,
-        "grid_import_tolerance_watt": 300,
-        "akku_entlade_sperre_watt": 100,
+        "enable_start_soc": False,
+        "start_soc_percent": 80,
+        "enable_start_battery_charge": False,
+        "start_battery_charge_watt": 2000,
+        "enable_pause_soc": False,
+        "pause_soc_percent": 30,
+        "enable_pause_battery_discharge": False,
+        "pause_battery_discharge_watt": 300,
+        "enable_pause_grid_import": False,
+        "pause_grid_import_watt": 300,
         "start_stable_minutes": 5,
         "stop_stable_minutes": 3,
     },
@@ -56,8 +61,8 @@ DEFAULT_CONFIG: dict = {
         "switch_stable_minutes": 5,
     },
     "mode": {
-        # "battery_auto" | "summer_24h"
-        "active": "battery_auto",
+        # Legacy configs may still contain "battery_auto" or "summer_24h".
+        "active": "auto",
     },
     "modes": {
         # "auto" | "pause" | "fixed_hashrate" | "fixed_power"
@@ -83,7 +88,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <title>pv-miner</title>
 <style>
 :root{--bg:#0b1020;--panel:#111827;--panel2:#162033;--line:#263244;--text:#eef4ff;--muted:#8ea0b8;--green:#35d07f;--amber:#f4bd50;--red:#ff6370;--blue:#58a6ff;--cyan:#3ddbd9}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input{background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input:not([type=checkbox]){background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input[type=checkbox]{width:1rem;height:1rem;margin-right:7px;vertical-align:-2px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
 </style>
 </head>
 <body>
@@ -101,7 +106,7 @@ HTML_PAGE = """<!DOCTYPE html>
         <div><span>Haus ohne Miner</span><b id="v-house">—</b></div>
         <div><span id="l-batt-reserve">Akku-Ladeziel</span><b id="v-batt-reserve">—</b></div>
         <div><span id="l-miner-need">Miner benötigt</span><b id="v-miner-need">—</b></div>
-        <div><span>Puffer</span><b id="v-buffer">—</b></div>
+        <div><span>Wechsel</span><b id="v-buffer">—</b></div>
       </div>
     </div>
     <div class="threshold">
@@ -126,13 +131,12 @@ HTML_PAGE = """<!DOCTYPE html>
     <section>
       <h3>Aktiver Laufmodus</h3>
       <div class="ov-row">
-        <button id="run-battery_auto" onclick="setRunMode('battery_auto')">Akku-Auto</button>
-        <button id="run-summer_24h" onclick="setRunMode('summer_24h')">PV-Sommer</button>
+        <button id="run-auto" onclick="setRunMode('auto')">Auto</button>
         <button id="run-pause" onclick="setRunMode('pause')">Pause</button>
         <button id="run-fixed_hashrate" onclick="setRunMode('fixed_hashrate')">Fix Hashrate</button>
         <button id="run-fixed_power" onclick="setRunMode('fixed_power')">Fix Watt</button>
       </div>
-      <div class="hint" style="margin-top:10px">Akku-Auto und PV-Sommer sind automatische Profile. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel, Fix Watt das Nacht-Ziel.</div>
+      <div class="hint" style="margin-top:10px">Auto nutzt Tag/Nacht-Ziele und die aktivierten Akku-/Netzregeln. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel, Fix Watt das Nacht-Ziel.</div>
       <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
       <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
@@ -157,41 +161,31 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
   </section>
 
-  <section>
-    <h3>Profile konfigurieren</h3>
-    <div class="ov-row">
-      <button id="profile-battery" onclick="showProfile('battery_auto')">Akku-Auto</button>
-      <button id="profile-summer" onclick="showProfile('summer_24h')">PV-Sommer 24h</button>
-    </div>
-    <div class="hint" style="margin-top:10px" id="profile-hint">Hier werden nur die Profile konfiguriert. Aktivieren passiert auf der Live-Seite.</div>
-  </section>
-
-  <section id="settings-battery">
-    <h3>Akku zuerst</h3>
-    <div class="fg">
-      <div class="field"><label>Miner benötigt (W)</label><input id="f-mneed" type="number" min="2500" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-mneed">Mindestens 2500 W. Wird genutzt, wenn der Miner noch aus ist oder langsam hochfährt.</div></div>
-      <div class="field"><label>Akku-Ladeziel (W)</label><input id="f-bcl" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-bcl">Default 2000 W. Auto startet nur, wenn der Akku nach dem Miner voraussichtlich noch mindestens so lädt.</div></div>
-      <div class="field"><label>Akku gilt als voll ab (%)</label><input id="f-full" type="number" min="90" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-full">Bei vollem Akku fällt das Ladeziel weg.</div></div>
-      <div class="field"><label>Sicherheitspuffer (W)</label><input id="f-buffer" type="number" min="0" max="5000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-buffer">Zusätzlicher Abstand, damit nicht aus dem Netz oder Akku gezogen wird.</div></div>
-      <div class="field"><label>Akku-Entlade-Sperre (W)</label><input id="f-abs" type="number" min="0" max="2000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-abs">Wenn P_Akku darüber liegt, startet der Stop-Timer.</div></div>
-      <div class="field"><label>Netzbezug tolerieren (W)</label><input id="f-gridtol" type="number" min="0" max="5000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-gridtol">Kurze Lastspitzen werden toleriert. Erst dauerhafter Netzbezug darüber stoppt den Miner.</div></div>
-      <div class="field"><label>Start erst nach stabiler Sonne (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Nach einer Pause startet der Miner erst wieder, wenn die Startbedingung so lange stabil erfüllt ist.</div></div>
-      <div class="field"><label>Stop erst nach Lastspitze (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Wenn Akku entlädt oder Netzbezug zu hoch ist, wartet Auto so lange, bevor pausiert wird.</div></div>
-      <div class="field"><label>Abfrage-Intervall (Sekunden)</label><input id="f-pi" type="number" min="10" max="300"><div class="hint">Wie oft Fronius und Miner abgefragt werden.</div></div>
-    </div>
-    <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
-  </section>
-
-  <section id="settings-summer" style="display:none">
-    <h3>PV-Sommer 24h</h3>
+  <section id="settings-auto">
+    <h3>Automatik</h3>
     <div class="fg">
       <div class="field"><label>Tag ab PV (W)</label><input id="f-daypv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-daypv">Ab dieser PV-Leistung wird nach stabiler Zeit auf High gestellt.</div></div>
       <div class="field"><label>Nacht unter PV (W)</label><input id="f-nightpv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-nightpv">Unter dieser PV-Leistung wird nach stabiler Zeit auf Low gestellt.</div></div>
       <div class="field"><label>Tag Hashrate Target (TH/s)</label><input id="f-highth" type="number" min="1" max="200" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-highth">Hashrate Target für Tag/Sonne.</div></div>
       <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="1" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
       <div class="field"><label>Wechsel erst nach stabil (Minuten)</label><input id="f-switchmin" type="number" min="1" max="120" oninput="updateConfigHints()"><div class="hint" id="h-switchmin">PV muss so lange stabil über/unter der Schwelle bleiben.</div></div>
+      <div class="field"><label>Abfrage-Intervall (Sekunden)</label><input id="f-pi" type="number" min="10" max="300"><div class="hint">Wie oft Fronius und Miner abgefragt werden.</div></div>
     </div>
-    <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg2"></span></div>
+  </section>
+
+  <section>
+    <h3>Optionale Akku- und Netzregeln</h3>
+    <div class="fg">
+      <div class="field"><label><input id="f-en-start-soc" type="checkbox" onchange="updateConfigHints()"> Start erst ab Akku-SOC</label><input id="f-start-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-start-soc">Wenn aktiv, startet Auto erst ab diesem Akku-Stand.</div></div>
+      <div class="field"><label><input id="f-en-start-charge" type="checkbox" onchange="updateConfigHints()"> Start erst bei Akku-Ladung</label><input id="f-start-charge" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-start-charge">Wenn aktiv, startet Auto erst, wenn der Akku mindestens so stark lädt.</div></div>
+      <div class="field"><label><input id="f-en-pause-soc" type="checkbox" onchange="updateConfigHints()"> Pause unter Akku-SOC</label><input id="f-pause-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-pause-soc">Wenn aktiv, pausiert Auto nach Stop-Timer unter diesem Akku-Stand.</div></div>
+      <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto nach Stop-Timer bei stärkerer Akku-Entladung.</div></div>
+      <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto nach Stop-Timer bei dauerhaftem Netzbezug.</div></div>
+      <div class="field"><label>Start erst nach stabiler Lage (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Gilt nur, wenn Auto gerade nicht läuft und die Start-Regeln erfüllt werden.</div></div>
+      <div class="field"><label>Pause erst nach Lastspitze (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für aktivierte Pause-Regeln.</div></div>
+    </div>
+    <input id="f-mneed" type="hidden" value="2800">
+    <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
   </section>
 </div>
 </main>
@@ -213,29 +207,20 @@ function targetValue(d, desired){
   return th(desired?d.desired_hashrate_target_th:d.hashrate_target_th);
 }
 function cls(card,kind){card.className='card '+(kind||'')}
-let activeMode='battery_auto';
-let configProfile=null;
+let activeMode='auto';
 let decisionTimer=null;
 let pendingRunMode=null;
 let runModeTimer=null;
 function runKey(active,override){
-  return (override&&override!=='auto')?override:(active||'battery_auto');
+  return (override&&override!=='auto')?override:'auto';
 }
 function setRunUi(mode){
-  const current=mode||'battery_auto';
-  ['battery_auto','summer_24h','pause','fixed_hashrate','fixed_power'].forEach(m=>el('run-'+m)?.classList.toggle('active',m===current));
-}
-function showProfile(profile){
-  configProfile=profile||'battery_auto';
-  el('profile-battery')?.classList.toggle('active',configProfile==='battery_auto');
-  el('profile-summer')?.classList.toggle('active',configProfile==='summer_24h');
-  el('settings-battery').style.display=configProfile==='battery_auto'?'block':'none';
-  el('settings-summer').style.display=configProfile==='summer_24h'?'block':'none';
-  el('profile-hint').textContent=configProfile==='summer_24h'?'Konfiguriert PV-Sommer. Aktivieren passiert auf der Live-Seite.':'Konfiguriert Akku-Auto. Aktivieren passiert auf der Live-Seite.';
+  const current=mode||'auto';
+  ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('run-'+m)?.classList.toggle('active',m===current));
 }
 async function sendRunMode(mode){
   const body={mode};
-  if(mode==='battery_auto'||mode==='summer_24h'){body.active_mode=mode;body.override='auto';}
+  if(mode==='auto'){body.active_mode='auto';body.override='auto';}
   else{body.override=mode;}
   try{
     const r=await fetch('/api/run-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -282,14 +267,13 @@ function renderDecisionReason(){
   el('decision-reason').textContent=decisionTimer.base.replace(decisionTimer.re,decisionTimer.text(left));
 }
 function updateConfigHints(){
-  const m=n('f-mneed',2800), b=n('f-bcl',2000), full=n('f-full',100), buf=n('f-buffer',200), abs=n('f-abs',100), gridtol=n('f-gridtol',300);
+  const ssoc=n('f-start-soc',80), scharge=n('f-start-charge',2000), psoc=n('f-pause-soc',30), pdis=n('f-pause-discharge',300), pgrid=n('f-pause-grid',300);
   const day=n('f-daypv',4000), night=n('f-nightpv',2000), hi=n('f-highth',110), loww=Math.max(945,n('f-loww',945)), sw=n('f-switchmin',5);
-  el('h-mneed').innerHTML=`pv-miner rechnet mit mindestens <em>${Math.max(2500,m)} W</em>. Sobald der Miner real mehr zieht, wird der höhere Wert genutzt.`;
-  el('h-bcl').innerHTML=`Auto startet nur, wenn der Akku nach Miner und Haus noch etwa <em>${(b/1000).toFixed(1)} kW</em> laden kann.`;
-  el('h-full').innerHTML=`Ab <em>${full}% SOC</em> gilt der Akku als voll; dann reicht Haus + Miner + Puffer.`;
-  el('h-buffer').innerHTML=`Zusätzlich <em>${buf} W</em> Reserve gegen Netzbezug/Akkuentladung.`;
-  el('h-abs').innerHTML=`Bei Akku-Entladung über <em>${abs} W</em> startet der Stop-Timer.`;
-  el('h-gridtol').innerHTML=`Bei Netzbezug über <em>${gridtol} W</em> startet der Stop-Timer.`;
+  el('h-start-soc').innerHTML=`${el('f-en-start-soc').checked?'Aktiv':'Aus'}: Start erst ab <em>${ssoc}%</em> Akku.`;
+  el('h-start-charge').innerHTML=`${el('f-en-start-charge').checked?'Aktiv':'Aus'}: Start erst, wenn der Akku mindestens <em>${scharge} W</em> lädt.`;
+  el('h-pause-soc').innerHTML=`${el('f-en-pause-soc').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer unter <em>${psoc}%</em> Akku.`;
+  el('h-pause-discharge').innerHTML=`${el('f-en-pause-discharge').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer bei Akku-Entladung über <em>${pdis} W</em>.`;
+  el('h-pause-grid').innerHTML=`${el('f-en-pause-grid').checked?'Aktiv':'Aus'}: Pause nach Stop-Timer bei Netzbezug über <em>${pgrid} W</em>.`;
   el('h-daypv').innerHTML=`Ab <em>${(day/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf High gewechselt.`;
   el('h-nightpv').innerHTML=`Unter <em>${(night/1000).toFixed(1)} kW</em> PV wird nach stabiler Zeit auf Low gewechselt.`;
   el('h-highth').innerHTML=`Tag-Ziel: <em>${hi.toFixed(1)} TH/s</em>.`;
@@ -304,20 +288,19 @@ async function fetchStatus(){
     el('l-pgrid').textContent=d.p_grid==null?'Netz':(d.p_grid<0?'Netz Einspeisung':(d.p_grid>0?'Netz Bezug':'Netz neutral')); el('v-pgrid').textContent=absw(d.p_grid);
     el('l-pakku').textContent=d.p_akku==null?'Batterie':(d.p_akku>0?'Batterie entlädt':(d.p_akku<0?'Batterie lädt':'Batterie neutral')); el('v-pakku').textContent=absw(d.p_akku);
     const fixed=d.manual_override==='fixed_hashrate'||d.manual_override==='fixed_power';
-    const targetMode=d.active_mode==='summer_24h'||fixed;
-    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fixed?'Fix':(d.active_mode==='summer_24h'?(d.summer_profile==='day'?'Tag':'Nacht'):fw(d.battery_charge_target_w)); el('v-miner-need').textContent=targetMode?targetValue(d,false):fw(d.miner_needed_w); el('v-buffer').textContent=fw(d.grid_buffer_watt);
-    el('l-batt-reserve').textContent=fixed?'Override':(d.active_mode==='summer_24h'?'PV-Profil':'Akku-Ladeziel');
-    el('l-miner-need').textContent=targetMode?(d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell'):'Miner benötigt';
-    el('l-required').textContent=targetMode?(fixed?'Fix Ziel':(d.summer_target_kind==='power'?'Power Target':'Hashrate Target')):'Start erlaubt ab';
-    el('v-required').textContent=targetMode?targetValue(d,true):kw(d.required_pv_w);
-    el('v-required-sub').textContent=fixed?'Fix-Modus übersteuert die Automatik bis du wieder Auto aktivierst.':(d.active_mode==='summer_24h'?'Sommermodus minet dauerhaft; Tag nutzt Hashrate Target, Nacht nutzt Power Target.':(d.soc!=null&&d.soc>=d.battery_full_soc?'Akku voll: Haus + Miner + Puffer reichen für den Start.':'Akku lädt zuerst: Start braucht Haus + Ladeziel + Miner + Puffer.'));
-    el('l-verfuegbar').textContent=targetMode?'Zieltyp':'Verfügbar'; el('v-verfuegbar').textContent=targetMode?(d.summer_target_kind==='power'?'Watt':'TH/s'):fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
+    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fixed?'Fix':(d.summer_profile==='day'?'Tag':'Nacht'); el('v-miner-need').textContent=targetValue(d,false); el('v-buffer').textContent=d.summer_switch_remaining_s!=null?fmtTimer(d.summer_switch_remaining_s):'—';
+    el('l-batt-reserve').textContent=fixed?'Override':'PV-Profil';
+    el('l-miner-need').textContent=d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell';
+    el('l-required').textContent=fixed?'Fix Ziel':(d.summer_target_kind==='power'?'Power Target':'Hashrate Target');
+    el('v-required').textContent=targetValue(d,true);
+    el('v-required-sub').textContent=fixed?'Fix-Modus übersteuert die Automatik bis du wieder Auto aktivierst.':'Auto nutzt Tag/Nacht-Zielwerte; optionale Akku-/Netzregeln können Start oder Pause verzögern.';
+    el('l-verfuegbar').textContent='Zieltyp'; el('v-verfuegbar').textContent=d.summer_target_kind==='power'?'Watt':'TH/s'; el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
     const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
     el('decision-title').textContent=d.decision_title||'Warte auf Daten'; setDecisionReason(d);
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
-    cls(el('c-soc'),d.soc==null?'':(d.soc>=d.battery_full_soc?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
-    if(!pendingRunMode) activeMode=d.active_mode||'battery_auto';
+    cls(el('c-soc'),d.soc==null?'':(d.soc>=80?'good':'warn')); cls(el('c-grid'),d.p_grid==null?'':(d.p_grid>50?'bad':(d.p_grid<-50?'good':''))); cls(el('c-batt'),d.p_akku==null?'':(d.p_akku>100?'bad':(d.p_akku<0?'good':'')));
+    if(!pendingRunMode) activeMode='auto';
     setRunUi(pendingRunMode||runKey(d.active_mode,d.manual_override));
     if(d.command_state==='ok'){el('cmdmsg').className='hint';el('cmdmsg').textContent=d.command_msg||'Befehl bestätigt';}
     else if(d.command_state){el('cmdmsg').className='hint warn';el('cmdmsg').textContent=d.command_msg||'Befehl nicht bestätigt';}
@@ -327,22 +310,26 @@ async function fetchStatus(){
 }
 async function fetchCfg(){
   try{const d=await(await fetch('/api/config',{cache:'no-store'})).json();
-    activeMode=d.mode?.active||'battery_auto';
-    showProfile(configProfile||activeMode);
+    activeMode='auto';
     el('f-fh').value=d.fronius?.host||''; el('f-fh2').value=d.fronius?.pv2_host||''; el('f-pi').value=d.fronius?.poll_interval_seconds??30;
     el('f-mh').value=d.miner?.host||''; el('f-ak').value=d.miner?.api_key||''; el('f-mneed').value=Math.max(2500,d.miner?.expected_power_watt??2800);
-    el('f-bcl').value=d.control?.battery_charge_target_watt??2000; el('f-full').value=d.control?.battery_full_soc??100; el('f-buffer').value=d.control?.grid_buffer_watt??200; el('f-abs').value=d.control?.akku_entlade_sperre_watt??100; el('f-gridtol').value=d.control?.grid_import_tolerance_watt??300; el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
+    el('f-en-start-soc').checked=!!d.control?.enable_start_soc; el('f-start-soc').value=d.control?.start_soc_percent??80;
+    el('f-en-start-charge').checked=!!d.control?.enable_start_battery_charge; el('f-start-charge').value=d.control?.start_battery_charge_watt??2000;
+    el('f-en-pause-soc').checked=!!d.control?.enable_pause_soc; el('f-pause-soc').value=d.control?.pause_soc_percent??30;
+    el('f-en-pause-discharge').checked=!!d.control?.enable_pause_battery_discharge; el('f-pause-discharge').value=d.control?.pause_battery_discharge_watt??300;
+    el('f-en-pause-grid').checked=!!d.control?.enable_pause_grid_import; el('f-pause-grid').value=d.control?.pause_grid_import_watt??300;
+    el('f-startmin').value=d.control?.start_stable_minutes??5; el('f-stopmin').value=d.control?.stop_stable_minutes??3;
     el('f-daypv').value=d.summer?.day_pv_threshold_watt??4000; el('f-nightpv').value=d.summer?.night_pv_threshold_watt??2000; el('f-highth').value=d.summer?.high_hashrate_th??110; el('f-loww').value=Math.max(945,d.summer?.low_power_watt??945); el('f-switchmin').value=d.summer?.switch_stable_minutes??5;
     updateConfigHints();
   }catch(e){}
 }
 async function saveCfg(){
-  const msg=(configProfile||'battery_auto')==='summer_24h'?el('smsg2'):el('smsg');
+  const msg=el('smsg');
   const loww=Math.max(945,n('f-loww',945)); el('f-loww').value=loww;
-  const cfg={mode:{active:activeMode},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{battery_charge_target_watt:n('f-bcl',2000),battery_full_soc:n('f-full',100),grid_buffer_watt:n('f-buffer',200),grid_import_tolerance_watt:n('f-gridtol',300),akku_entlade_sperre_watt:n('f-abs',100),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:loww,switch_stable_minutes:n('f-switchmin',5)}};
+  const cfg={mode:{active:'auto'},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim(),expected_power_watt:Math.max(2500,n('f-mneed',2800))},control:{enable_start_soc:el('f-en-start-soc').checked,start_soc_percent:n('f-start-soc',80),enable_start_battery_charge:el('f-en-start-charge').checked,start_battery_charge_watt:n('f-start-charge',2000),enable_pause_soc:el('f-en-pause-soc').checked,pause_soc_percent:n('f-pause-soc',30),enable_pause_battery_discharge:el('f-en-pause-discharge').checked,pause_battery_discharge_watt:n('f-pause-discharge',300),enable_pause_grid_import:el('f-en-pause-grid').checked,pause_grid_import_watt:n('f-pause-grid',300),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:loww,switch_stable_minutes:n('f-switchmin',5)}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
-  setTimeout(()=>{el('smsg').textContent='';el('smsg2').textContent='';},4000);
+  setTimeout(()=>{el('smsg').textContent='';},4000);
 }
 async function setRunMode(mode){
   pendingRunMode=mode;
@@ -376,6 +363,7 @@ class ConfigManager:
     def _load(self) -> dict:
         if not self._path.exists():
             cfg = json.loads(json.dumps(DEFAULT_CONFIG))
+            normalize_config_patch(cfg)
             self._write(cfg)
             return cfg
         try:
@@ -387,6 +375,7 @@ class ConfigManager:
                     cfg[section].update(loaded[section])
                 elif section in loaded:
                     cfg[section] = loaded[section]
+            normalize_config_patch(cfg)
             return cfg
         except Exception as exc:
             logging.getLogger("config").error("Load failed: %s — using defaults", exc)
@@ -919,7 +908,7 @@ class StateStore:
             "miner_power_w": None, "battery_full_soc": None,
             "hashrate_target_th": None, "desired_hashrate_target_th": None,
             "power_target_w": None, "desired_power_target_w": None,
-            "active_mode": "battery_auto", "summer_profile": None,
+            "active_mode": "auto", "summer_profile": None,
             "summer_target_kind": None,
             "start_wait_remaining_s": None, "stop_wait_remaining_s": None,
             "summer_switch_remaining_s": None,
@@ -989,67 +978,98 @@ class PowerController:
     def _decision_numbers(pf: dict, cfg: dict, miner_w_now: int) -> dict:
         configured_miner_need = max(2500, int(cfg["miner"].get("expected_power_watt", 2800)))
         miner_need = max(configured_miner_need, max(0, miner_w_now))
-        full_soc = float(cfg["control"].get("battery_full_soc", 100))
-        battery_target = int(cfg["control"].get("battery_charge_target_watt", 2000))
-        buffer_w = int(cfg["control"].get("grid_buffer_watt", 200))
+        ctrl = cfg.get("control", {})
+        start_soc = float(ctrl.get("start_soc_percent", ctrl.get("battery_full_soc", 80)))
+        battery_target = int(ctrl.get("start_battery_charge_watt", ctrl.get("battery_charge_target_watt", 2000)))
         house_without_miner = max(0.0, abs(pf.get("p_load", 0.0)) - max(0, miner_w_now))
-        battery_target_active = 0 if pf["soc"] >= full_soc else battery_target
         battery_charge_now = max(0.0, -pf.get("p_akku", 0.0))
-        battery_charge_margin = battery_charge_now - battery_target_active
-        required_pv = house_without_miner + battery_target_active + miner_need + buffer_w
-        available = pf["p_pv"] - required_pv
+        battery_charge_margin = battery_charge_now - battery_target
+        available = pf["p_pv"] - house_without_miner
         return {
             "house_without_miner_w": house_without_miner,
-            "battery_charge_target_w": battery_target_active,
+            "battery_charge_target_w": battery_target,
             "battery_charge_now_w": battery_charge_now,
             "battery_charge_margin_w": battery_charge_margin,
             "miner_needed_w": miner_need,
-            "grid_buffer_watt": buffer_w,
-            "required_pv_w": required_pv,
+            "grid_buffer_watt": 0,
+            "required_pv_w": int(cfg.get("summer", {}).get("day_pv_threshold_watt", 4000)),
             "available_w": available,
-            "battery_full_soc": full_soc,
+            "battery_full_soc": start_soc,
         }
 
-    def _decide_auto(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
-        nums = self._decision_numbers(pf, cfg, miner_w_now)
-        discharge_limit = int(cfg["control"].get("akku_entlade_sperre_watt", 100))
-        grid_tolerance = int(cfg["control"].get("grid_import_tolerance_watt", 300))
+    @staticmethod
+    def _enabled(ctrl: dict, key: str) -> bool:
+        return bool(ctrl.get(key))
 
-        if pf["p_akku"] > discharge_limit:
-            return "pause", nums, "Akku entlädt", (
-                f"Akku entlädt mit {pf['p_akku']:.0f} W. Auto pausiert erst, wenn das länger anhält."
-            )
+    @staticmethod
+    def _rule_list_text(rules: list[str]) -> str:
+        if not rules:
+            return ""
+        if len(rules) == 1:
+            return rules[0]
+        return ", ".join(rules[:-1]) + " und " + rules[-1]
 
-        if pf["p_grid"] > grid_tolerance:
-            return "pause", nums, "Netzbezug zu hoch", (
-                f"Netzbezug liegt bei {pf['p_grid']:.0f} W. Auto pausiert erst, wenn das länger anhält."
-            )
+    def _start_rule_failures(self, pf: dict, cfg: dict) -> list[str]:
+        ctrl = cfg.get("control", {})
+        failures: list[str] = []
+        if self._enabled(ctrl, "enable_start_soc"):
+            limit = float(ctrl.get("start_soc_percent", 80))
+            if pf["soc"] < limit:
+                failures.append(f"Akku-SOC {pf['soc']:.1f}% unter {limit:g}%")
+        if self._enabled(ctrl, "enable_start_battery_charge"):
+            limit = int(ctrl.get("start_battery_charge_watt", 2000))
+            charge = max(0.0, -pf.get("p_akku", 0.0))
+            if charge < limit:
+                failures.append(f"Akku lädt nur mit {charge:.0f} W statt {limit} W")
+        return failures
 
-        if pf["p_pv"] >= nums["required_pv_w"]:
-            if nums["battery_charge_target_w"] > 0:
-                return "run", nums, "Mining erlaubt", "PV reicht für Haus, Akku-Ladeziel, Miner und Puffer."
-            return "run", nums, "Mining erlaubt", "Akku ist voll; PV reicht für Haus, Miner und Puffer."
+    def _pause_rule_failures(self, pf: dict, cfg: dict) -> list[str]:
+        ctrl = cfg.get("control", {})
+        failures: list[str] = []
+        if self._enabled(ctrl, "enable_pause_soc"):
+            limit = float(ctrl.get("pause_soc_percent", 30))
+            if pf["soc"] < limit:
+                failures.append(f"Akku-SOC {pf['soc']:.1f}% unter {limit:g}%")
+        if self._enabled(ctrl, "enable_pause_battery_discharge"):
+            limit = int(ctrl.get("pause_battery_discharge_watt", 300))
+            if pf["p_akku"] > limit:
+                failures.append(f"Akku entlädt mit {pf['p_akku']:.0f} W über {limit} W")
+        if self._enabled(ctrl, "enable_pause_grid_import"):
+            limit = int(ctrl.get("pause_grid_import_watt", 300))
+            if pf["p_grid"] > limit:
+                failures.append(f"Netzbezug {pf['p_grid']:.0f} W über {limit} W")
+        return failures
 
-        missing = nums["required_pv_w"] - pf["p_pv"]
+    def _decide_auto(self, pf: dict, cfg: dict, miner_w_now: int) -> DesiredState:
+        base = self._decide_summer(pf, cfg, miner_w_now)
+        nums = base.nums
+
         if self._cur_action == "run":
-            return "run", nums, "Mining läuft", (
-                "PV liegt unter der Startschwelle, aber Akku entlädt nicht und Netzbezug bleibt im Rahmen."
+            pause_failures = self._pause_rule_failures(pf, cfg)
+            if pause_failures:
+                return DesiredState(
+                    "pause",
+                    "Schutzregel aktiv",
+                    f"{self._rule_list_text(pause_failures)}. Automatik pausiert erst, wenn das länger anhält.",
+                    nums,
+                    hashrate_target_th=base.hashrate_target_th,
+                    power_target_w=base.power_target_w,
+                    profile=base.profile,
+                )
+            return base
+
+        start_failures = self._start_rule_failures(pf, cfg)
+        if start_failures:
+            return DesiredState(
+                "pause",
+                "Start wartet",
+                f"{self._rule_list_text(start_failures)}. Start-Regeln müssen stabil erfüllt sein.",
+                nums,
+                hashrate_target_th=base.hashrate_target_th,
+                power_target_w=base.power_target_w,
+                profile=base.profile,
             )
-
-        if nums["battery_charge_target_w"] > 0:
-            return "pause", nums, "Akku lädt zuerst", (
-                f"Es fehlen {missing:.0f} W, damit der Akku mit Ladeziel weiterlädt und der Miner zusätzlich startet."
-            )
-        return "pause", nums, "Zu wenig PV", f"Es fehlen {missing:.0f} W für Haus, Miner und Puffer."
-
-    def _decide(self, pf: dict, cfg: dict, miner_w_now: int) -> tuple[str, dict, str, str]:
-        override = self._override(cfg)
-        auto_action, nums, auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
-
-        if override == "pause":
-            return "pause", nums, "Pause", "Die Automatik ist pausiert."
-
-        return auto_action, nums, auto_title, auto_reason
+        return base
 
     def _peek_auto_gate(self, desired: str, cfg: dict) -> str:
         """Return what Auto would do now without mutating timers."""
@@ -1077,33 +1097,27 @@ class PowerController:
     def _auto_preview_for_fixed(self, pf: dict | None, cfg: dict, miner_w_now: int,
                                 active_mode: str) -> tuple[str, str, str]:
         if pf is None:
-            if active_mode == "summer_24h":
-                auto_state = self._decide_summer(None, cfg, miner_w_now)
-                return auto_state.action, self._preview_title(auto_state.action), auto_state.reason
             return "pause", "Pausieren", "Ohne Wechselrichterdaten würde Auto sicherheitshalber pausieren."
 
-        if active_mode == "summer_24h":
-            saved_profile = self._summer_profile
-            saved_since = self._summer_switch_since
-            try:
-                auto_state = self._decide_summer(pf, cfg, miner_w_now)
-                return auto_state.action, self._preview_title(auto_state.action), auto_state.reason
-            finally:
-                self._summer_profile = saved_profile
-                self._summer_switch_since = saved_since
+        saved_profile = self._summer_profile
+        saved_since = self._summer_switch_since
+        try:
+            auto_desired_state = self._decide_auto(pf, cfg, miner_w_now)
+        finally:
+            self._summer_profile = saved_profile
+            self._summer_switch_since = saved_since
 
-        auto_desired, _nums, _title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
-        auto_action = self._peek_auto_gate(auto_desired, cfg)
-        if auto_desired == "run" and auto_action == "pause":
+        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg)
+        if auto_desired_state.action == "run" and auto_action == "pause":
             return auto_action, "Start wartet", "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
-        if auto_desired == "pause" and auto_action == "run":
+        if auto_desired_state.action == "pause" and auto_action == "run":
             return auto_action, "Mining bleibt aktiv", "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
-        return auto_action, self._preview_title(auto_action), auto_reason
+        return auto_action, self._preview_title(auto_action), auto_desired_state.reason
 
     @staticmethod
     def _mode(cfg: dict) -> str:
-        mode = cfg.get("mode", {}).get("active", "battery_auto")
-        return mode if mode in ("battery_auto", "summer_24h") else "battery_auto"
+        mode = cfg.get("mode", {}).get("active", "auto")
+        return "auto" if mode in ("auto", "battery_auto", "summer_24h") else "auto"
 
     @staticmethod
     def _override(cfg: dict) -> str:
@@ -1191,7 +1205,7 @@ class PowerController:
             profile_name = "Tag/High" if self._summer_profile == "day" else "Nacht/Low"
             return self._desired_with_target(
                 "run",
-                "Sommermodus hält Zustand",
+                "Automatik hält Zustand",
                 f"Fronius ist nicht erreichbar. Auto hält {profile_name} mit {target_text}.",
                 nums,
                 target,
@@ -1204,8 +1218,8 @@ class PowerController:
             target_text = f"{target[1]:.1f} TH/s" if target[0] == "hashrate" else f"{int(target[1])} W"
             return self._desired_with_target(
                 "run",
-                f"Sommermodus {'Tag/High' if self._summer_profile == 'day' else 'Nacht/Low'}",
-                f"Sommerprofil aus aktueller PV-Leistung gesetzt: {target_text}.",
+                f"Automatik {'Tag/High' if self._summer_profile == 'day' else 'Nacht/Low'}",
+                f"PV-Profil aus aktueller PV-Leistung gesetzt: {target_text}.",
                 nums,
                 target,
                 self._summer_profile,
@@ -1232,7 +1246,7 @@ class PowerController:
             remain = max(0, int(wait_s - (now - (self._summer_switch_since or now))))
             return self._desired_with_target(
                 "run",
-                "Sommermodus wartet",
+                "Automatik wartet",
                 f"{target_name} ist vorbereitet. Wechsel in {remain // 60}:{remain % 60:02d}, wenn PV stabil bleibt.",
                 nums,
                 target,
@@ -1243,7 +1257,7 @@ class PowerController:
         target_text = f"{target[1]:.1f} TH/s" if target[0] == "hashrate" else f"{int(target[1])} W"
         return self._desired_with_target(
             "run",
-            f"Sommermodus {profile_name}",
+            f"Automatik {profile_name}",
             f"Miner läuft dauerhaft mit {target_text}. Umschaltung erfolgt per PV-Hysterese.",
             nums,
             target,
@@ -1435,32 +1449,6 @@ class PowerController:
                 )
                 self._apply_desired(fixed_state, current_hashrate_th, current_power_target_w, current_target_kind)
                 return
-            if active_mode == "summer_24h" and miner_host and override == "auto":
-                desired_state = self._decide_summer(None, cfg, miner_w_now)
-                self._state.update(
-                    miner_power_w=miner_w_now if miner_st else None,
-                    hashrate_target_th=current_hashrate_th,
-                    power_target_w=current_power_target_w,
-                    desired_hashrate_target_th=desired_state.hashrate_target_th,
-                    desired_power_target_w=desired_state.power_target_w,
-                    display_state=self._display(desired_state.action),
-                    manual_override=override,
-                    active_mode=active_mode,
-                    summer_profile=desired_state.profile,
-                    summer_target_kind=desired_state.target_kind,
-                    start_wait_remaining_s=None,
-                    stop_wait_remaining_s=None,
-                    summer_switch_remaining_s=None,
-                    poll_interval_seconds=poll_interval,
-                    decision_title=desired_state.title,
-                    decision_reason=desired_state.reason,
-                    auto_preview_action=desired_state.action,
-                    auto_preview_title=self._preview_title(desired_state.action),
-                    auto_preview_reason=desired_state.reason,
-                    **desired_state.nums,
-                )
-                self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
-                return
             if self._fronius_err >= 3 and miner_host and self._cur_action != "pause" and override == "auto":
                 self._apply("pause")
             self._state.update(
@@ -1484,22 +1472,25 @@ class PowerController:
 
         self._fronius_err = 0
         nums = self._decision_numbers(pf, cfg, miner_w_now)
-        if override == "auto" and active_mode == "summer_24h" and cfg.get("modes", {}).get("sync_summer_profile_now"):
+        if override == "auto" and cfg.get("modes", {}).get("sync_summer_profile_now"):
             self._summer_profile = self._summer_profile_from_pv(pf, cfg)
             self._summer_switch_since = None
             self._cfg.update({"modes": {"sync_summer_profile_now": False}})
-        if override == "auto" and cfg.get("modes", {}).get("resume_auto_now") and (not miner_host or active_mode == "summer_24h"):
-            self._cfg.update({"modes": {"resume_auto_now": False}})
 
         if not miner_host:
+            desired_state = self._decide_auto(pf, cfg, 0)
             self._state.update(
                 soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
                 miner_power_w=None, hashrate_target_th=None, power_target_w=None,
+                desired_hashrate_target_th=desired_state.hashrate_target_th,
+                desired_power_target_w=desired_state.power_target_w,
                 verfuegbar_w=max(0, nums["available_w"]), manual_override=override,
                 active_mode=active_mode,
                 display_state="unknown", poll_interval_seconds=poll_interval,
+                summer_profile=desired_state.profile,
+                summer_target_kind=desired_state.target_kind,
                 start_wait_remaining_s=None, stop_wait_remaining_s=None,
-                summer_switch_remaining_s=None,
+                summer_switch_remaining_s=self._summer_switch_remaining(cfg),
                 decision_title="Antminer fehlt", decision_reason="Fronius wird angezeigt; zum Schalten fehlt noch die Antminer-IP.",
                 auto_preview_action=None, auto_preview_title=None,
                 auto_preview_reason="Auto kann ohne Antminer-IP noch nicht schalten.",
@@ -1539,66 +1530,45 @@ class PowerController:
             self._apply_desired(fixed_state, current_hashrate_th, current_power_target_w, current_target_kind)
             return
 
-        if active_mode == "summer_24h":
-            auto_state = self._decide_summer(pf, cfg, miner_w_now)
-            desired_state = auto_state
-
-            self._state.update(
-                soc=pf["soc"], p_grid=pf["p_grid"], p_pv=pf["p_pv"], p_akku=pf["p_akku"], p_load=pf.get("p_load"),
-                miner_power_w=miner_w_now if miner_st else None,
-                hashrate_target_th=current_hashrate_th,
-                power_target_w=current_power_target_w,
-                desired_hashrate_target_th=desired_state.hashrate_target_th,
-                desired_power_target_w=desired_state.power_target_w,
-                verfuegbar_w=max(0, desired_state.nums["available_w"]),
-                display_state=self._display(desired_state.action), manual_override=override,
-                active_mode=active_mode, summer_profile=desired_state.profile,
-                summer_target_kind=desired_state.target_kind,
-                start_wait_remaining_s=None,
-                stop_wait_remaining_s=None,
-                summer_switch_remaining_s=self._summer_switch_remaining(cfg),
-                poll_interval_seconds=poll_interval,
-                decision_title=desired_state.title, decision_reason=desired_state.reason,
-                auto_preview_action=auto_state.action,
-                auto_preview_title=self._preview_title(auto_state.action),
-                auto_preview_reason=auto_state.reason,
-                **desired_state.nums,
-            )
-            self._log.info("[cycle] summer PV=%.0fW profile=%s target=%s/%s → %s",
-                           pf["p_pv"], desired_state.profile, desired_state.target_kind,
-                           desired_state.hashrate_target_th or desired_state.power_target_w,
-                           desired_state.action.upper())
-            self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
-            return
-
-        auto_desired, _auto_nums, _auto_title, auto_reason = self._decide_auto(pf, cfg, miner_w_now)
-        auto_action = self._peek_auto_gate(auto_desired, cfg)
-        if auto_desired == "run" and auto_action == "pause":
+        auto_desired_state = self._decide_auto(pf, cfg, miner_w_now)
+        auto_action = self._peek_auto_gate(auto_desired_state.action, cfg)
+        if auto_desired_state.action == "run" and auto_action == "pause":
             auto_preview_title = "Start wartet"
             auto_preview_reason = "Startbedingung erfüllt. Beim Umschalten auf Auto startet der Miner erst nach stabiler Sonne."
-        elif auto_desired == "pause" and auto_action == "run":
+        elif auto_desired_state.action == "pause" and auto_action == "run":
             auto_preview_title = "Mining bleibt aktiv"
             auto_preview_reason = "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
         else:
             auto_preview_title = self._preview_title(auto_action)
-            auto_preview_reason = auto_reason
+            auto_preview_reason = auto_desired_state.reason
 
-        desired, nums, title, reason = self._decide(pf, cfg, miner_w_now)
         force_auto_start = override == "auto" and bool(cfg.get("modes", {}).get("resume_auto_now"))
-        action = desired if override != "auto" else self._auto_gate(desired, cfg, force_auto_start)
+        action = self._auto_gate(auto_desired_state.action, cfg, force_auto_start)
         if force_auto_start:
             self._cfg.update({"modes": {"resume_auto_now": False}})
+        desired_state = DesiredState(
+            action,
+            auto_desired_state.title,
+            auto_desired_state.reason,
+            auto_desired_state.nums,
+            hashrate_target_th=auto_desired_state.hashrate_target_th,
+            power_target_w=auto_desired_state.power_target_w,
+            profile=auto_desired_state.profile,
+        )
+        nums = desired_state.nums
+        title = desired_state.title
+        reason = desired_state.reason
         wait_remaining = None
         stop_wait_remaining = None
-        if force_auto_start and desired == "run" and action == "run":
+        if force_auto_start and auto_desired_state.action == "run" and action == "run":
             title = "Auto aktiviert"
             reason = "Auto hat die aktuelle Startbedingung sofort angewendet."
-        if override == "auto" and desired == "run" and action == "pause" and self._start_since is not None:
+        if override == "auto" and auto_desired_state.action == "run" and action == "pause" and self._start_since is not None:
             wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
             title = "Warte auf stabile Sonne"
             reason = f"Startbedingung erfüllt. Miner startet in {wait_remaining // 60}:{wait_remaining % 60:02d}, wenn genug PV stabil bleibt."
-        if override == "auto" and desired == "pause" and action == "run" and self._stop_since is not None:
+        if override == "auto" and auto_desired_state.action == "pause" and action == "run" and self._stop_since is not None:
             wait_s = max(0, float(cfg["control"].get("stop_stable_minutes", 3))) * 60
             stop_wait_remaining = max(0, int(wait_s - (time.monotonic() - self._stop_since)))
             title = "Lastspitze wird toleriert"
@@ -1609,27 +1579,29 @@ class PowerController:
             miner_power_w=miner_w_now if miner_st else None,
             hashrate_target_th=current_hashrate_th,
             power_target_w=current_power_target_w,
-            desired_hashrate_target_th=None,
-            desired_power_target_w=None,
+            desired_hashrate_target_th=desired_state.hashrate_target_th,
+            desired_power_target_w=desired_state.power_target_w,
             verfuegbar_w=max(0, nums["available_w"]),
             display_state=self._display(action), manual_override=override,
-            active_mode=active_mode, summer_profile=None, summer_target_kind=None,
+            active_mode=active_mode, summer_profile=desired_state.profile,
+            summer_target_kind=desired_state.target_kind,
             poll_interval_seconds=poll_interval, decision_title=title, decision_reason=reason,
             start_wait_remaining_s=wait_remaining, stop_wait_remaining_s=stop_wait_remaining,
-            summer_switch_remaining_s=None,
+            summer_switch_remaining_s=self._summer_switch_remaining(cfg),
             auto_preview_action=auto_action, auto_preview_title=auto_preview_title,
             auto_preview_reason=auto_preview_reason,
             **nums,
         )
 
         if self._cur_action is not None and action == self._cur_action:
-            self._log.info("[cycle] SOC=%.1f%% PV=%.0fW required=%.0fW → no change (%s)",
-                           pf["soc"], pf["p_pv"], nums["required_pv_w"], self._cur_action)
-            return
-
-        self._log.info("[cycle] SOC=%.1f%% PV=%.0fW required=%.0fW → %s",
-                       pf["soc"], pf["p_pv"], nums["required_pv_w"], action.upper())
-        self._apply(action)
+            self._log.info("[cycle] SOC=%.1f%% PV=%.0fW profile=%s target=%s/%s → no action change (%s)",
+                           pf["soc"], pf["p_pv"], desired_state.profile, desired_state.target_kind,
+                           desired_state.hashrate_target_th or desired_state.power_target_w, self._cur_action)
+        else:
+            self._log.info("[cycle] SOC=%.1f%% PV=%.0fW profile=%s target=%s/%s → %s",
+                           pf["soc"], pf["p_pv"], desired_state.profile, desired_state.target_kind,
+                           desired_state.hashrate_target_th or desired_state.power_target_w, action.upper())
+        self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
 
 # ---------------------------------------------------------------------------
 # Flask web app
@@ -1643,22 +1615,22 @@ def validate_config_patch(data: dict) -> str | None:
     modes = data.get("modes", {})
 
     try:
-        if mode.get("active", "battery_auto") not in ("battery_auto", "summer_24h"):
+        if mode.get("active", "auto") not in ("auto", "battery_auto", "summer_24h"):
             return "Betriebsmodus ist ungültig"
         if modes and modes.get("manual_override", "auto") not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return "Steuerungsmodus ist ungültig"
         if not (2500 <= int(miner.get("expected_power_watt", 2800)) <= 10000):
             return "Miner benötigt muss zwischen 2500 und 10000 W liegen"
-        if not (0 <= int(ctrl.get("battery_charge_target_watt", 2000)) <= 30000):
-            return "Akku-Ladeziel muss zwischen 0 und 30000 W liegen"
-        if not (90 <= float(ctrl.get("battery_full_soc", 100)) <= 100):
-            return "Akku voll ab muss zwischen 90 und 100% liegen"
-        if not (0 <= int(ctrl.get("grid_buffer_watt", 200)) <= 5000):
-            return "Sicherheitspuffer muss zwischen 0 und 5000 W liegen"
-        if not (0 <= int(ctrl.get("grid_import_tolerance_watt", 300)) <= 5000):
-            return "Netzbezug tolerieren muss zwischen 0 und 5000 W liegen"
-        if not (0 <= int(ctrl.get("akku_entlade_sperre_watt", 100)) <= 2000):
-            return "Akku-Entlade-Sperre muss zwischen 0 und 2000 W liegen"
+        if not (0 <= float(ctrl.get("start_soc_percent", 80)) <= 100):
+            return "Start-SOC muss zwischen 0 und 100% liegen"
+        if not (0 <= int(ctrl.get("start_battery_charge_watt", 2000)) <= 30000):
+            return "Start-Akkuladung muss zwischen 0 und 30000 W liegen"
+        if not (0 <= float(ctrl.get("pause_soc_percent", 30)) <= 100):
+            return "Pause-SOC muss zwischen 0 und 100% liegen"
+        if not (0 <= int(ctrl.get("pause_battery_discharge_watt", 300)) <= 10000):
+            return "Akku-Entladung muss zwischen 0 und 10000 W liegen"
+        if not (0 <= int(ctrl.get("pause_grid_import_watt", 300)) <= 10000):
+            return "Netzbezug muss zwischen 0 und 10000 W liegen"
         if not (1 <= int(ctrl.get("start_stable_minutes", 5)) <= 60):
             return "Start-Wartezeit muss zwischen 1 und 60 Minuten liegen"
         if not (1 <= int(ctrl.get("stop_stable_minutes", 3)) <= 60):
@@ -1682,6 +1654,27 @@ def validate_config_patch(data: dict) -> str | None:
 
 
 def normalize_config_patch(data: dict) -> None:
+    mode = data.setdefault("mode", {})
+    if mode.get("active") in ("battery_auto", "summer_24h", None):
+        mode["active"] = "auto"
+    ctrl = data.setdefault("control", {})
+    legacy_map = {
+        "start_soc_percent": ("battery_full_soc", 80),
+        "start_battery_charge_watt": ("battery_charge_target_watt", 2000),
+        "pause_battery_discharge_watt": ("akku_entlade_sperre_watt", 300),
+        "pause_grid_import_watt": ("grid_import_tolerance_watt", 300),
+    }
+    for new_key, (old_key, default) in legacy_map.items():
+        if new_key not in ctrl:
+            ctrl[new_key] = ctrl.get(old_key, default)
+    for key in (
+        "enable_start_soc",
+        "enable_start_battery_charge",
+        "enable_pause_soc",
+        "enable_pause_battery_discharge",
+        "enable_pause_grid_import",
+    ):
+        ctrl[key] = bool(ctrl.get(key, False))
     summer = data.setdefault("summer", {})
     try:
         summer["low_power_watt"] = max(945, int(summer.get("low_power_watt", 945)))
@@ -1860,29 +1853,31 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
         active_mode = data.get("active_mode")
         if override not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
             return jsonify({"error": "Invalid mode"}), 400
-        if active_mode is not None and active_mode not in ("battery_auto", "summer_24h"):
+        if active_mode in ("battery_auto", "summer_24h"):
+            active_mode = "auto"
+        if active_mode is not None and active_mode != "auto":
             return jsonify({"error": "Invalid active mode"}), 400
 
         cfg = cfg_manager.get()
         previous_mode = cfg.get("modes", {}).get("manual_override", "auto")
-        previous_active = cfg.get("mode", {}).get("active", "battery_auto")
+        previous_active = "auto"
         summer = cfg.get("summer", {})
         hashrate_th = float(summer.get("high_hashrate_th", 110))
         power_watt = max(945, int(summer.get("low_power_watt", 945)))
         sync_summer = (
             override == "auto"
-            and active_mode == "summer_24h"
-            and (previous_mode != "auto" or previous_active != "summer_24h")
+            and (active_mode in (None, "auto"))
+            and previous_mode != "auto"
         )
         cfg_manager.set_run_mode(
-            active_mode=active_mode,
+            active_mode=active_mode or "auto",
             override=override,
             resume_auto_now=(previous_mode == "pause" and override == "auto"),
             sync_summer_profile_now=sync_summer,
         )
         state_patch = {
             "manual_override": override,
-            "active_mode": active_mode or previous_active,
+            "active_mode": "auto",
             "command_state": None,
             "command_msg": None,
             "desired_hashrate_target_th": None,
@@ -1907,7 +1902,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore) -> Flask:
                 summer_target_kind="power",
             )
         state.update(**state_patch)
-        logging.getLogger("cycle").info("Run mode: active=%s override=%s", active_mode or previous_active, override)
+        logging.getLogger("cycle").info("Run mode: active=auto override=%s", override)
         return jsonify({"ok": True})
 
     @app.route("/api/override", methods=["POST"])
