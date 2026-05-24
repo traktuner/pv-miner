@@ -79,7 +79,10 @@ if P_PV <= night_pv_threshold for switch_stable_minutes:
 if miner is stopped and any enabled start rule is not fulfilled:
   keep paused
 
-if miner is stopped and all enabled start rules are fulfilled for start_stable_minutes:
+if miner is stopped, target is power, and PV after house load is below that target:
+  keep paused
+
+if miner is stopped and all start conditions are fulfilled for start_stable_minutes:
   resume miner and apply target
 
 if miner is running and enabled pause_soc is violated:
@@ -92,7 +95,7 @@ if miner is running and no enabled pause rule is violated:
   keep mining and apply target changes when needed
 ```
 
-Start rules only gate starting; they do not stop a running miner. SOC pause is a hard battery guard and pauses immediately. Watt pause rules for battery discharge and grid import are delayed by `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. If both start SOC and pause SOC are enabled, start SOC must be higher than pause SOC to avoid restart/stop chatter at one threshold. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
+Start conditions only gate starting; they do not stop a running miner. In low-PV/night mode, Auto starts from pause only when the configured power target is covered by PV after house load. SOC pause is a hard battery guard and pauses immediately. Watt pause rules for battery discharge and grid import are delayed by `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. If both start SOC and pause SOC are enabled, start SOC must be higher than pause SOC to avoid restart/stop chatter at one threshold. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
 Target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target. Settings saves only update `/data/config.json`; miner API calls are made later by the single control loop, one desired state at a time.
 

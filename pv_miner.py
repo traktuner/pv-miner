@@ -998,6 +998,18 @@ class PowerController:
                 failures.append(f"Akku lädt nur mit {charge:.0f} W statt {limit} W")
         return failures
 
+    @staticmethod
+    def _target_start_failures(desired: DesiredState) -> list[str]:
+        if desired.power_target_w is None:
+            return []
+        available = float(desired.nums.get("available_w") or 0)
+        if available >= desired.power_target_w:
+            return []
+        missing = desired.power_target_w - available
+        return [
+            f"PV nach Hauslast {available:.0f} W deckt das Nacht-Ziel {desired.power_target_w} W nicht; es fehlen {missing:.0f} W"
+        ]
+
     def _pause_rule_failures(self, pf: dict, cfg: dict) -> tuple[list[str], list[str]]:
         ctrl = cfg.get("control", {})
         immediate: list[str] = []
@@ -1046,12 +1058,12 @@ class PowerController:
                 )
             return base
 
-        start_failures = self._start_rule_failures(pf, cfg)
+        start_failures = self._target_start_failures(base) + self._start_rule_failures(pf, cfg)
         if start_failures:
             return DesiredState(
                 "pause",
                 "Start wartet",
-                f"{self._rule_list_text(start_failures)}. Start-Regeln müssen stabil erfüllt sein.",
+                f"{self._rule_list_text(start_failures)}. Startbedingungen müssen stabil erfüllt sein.",
                 nums,
                 hashrate_target_th=base.hashrate_target_th,
                 power_target_w=base.power_target_w,
@@ -1098,7 +1110,7 @@ class PowerController:
 
         auto_action = self._peek_auto_gate(auto_desired_state.action, cfg, auto_desired_state.immediate_pause)
         if auto_desired_state.action == "run" and auto_action == "pause":
-            return auto_action, "Start wartet", "Startbedingung erfüllt. Auto würde erst nach stabiler Sonne starten."
+            return auto_action, "Start wartet", f"{auto_desired_state.reason} Auto würde erst nach stabiler Lage starten."
         if auto_desired_state.action == "pause" and auto_action == "run":
             return auto_action, "Mining bleibt aktiv", "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
         return auto_action, self._preview_title(auto_action), auto_desired_state.reason
@@ -1522,7 +1534,7 @@ class PowerController:
         auto_action = self._peek_auto_gate(auto_desired_state.action, cfg, auto_desired_state.immediate_pause)
         if auto_desired_state.action == "run" and auto_action == "pause":
             auto_preview_title = "Start wartet"
-            auto_preview_reason = "Startbedingung erfüllt. Beim Umschalten auf Auto startet der Miner erst nach stabiler Sonne."
+            auto_preview_reason = f"{auto_desired_state.reason} Beim Umschalten auf Auto startet der Miner erst nach stabiler Lage."
         elif auto_desired_state.action == "pause" and auto_desired_state.immediate_pause:
             auto_preview_title = "Pausieren"
             auto_preview_reason = auto_desired_state.reason
@@ -1564,7 +1576,7 @@ class PowerController:
             wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
             title = "Warte auf stabile Sonne"
-            reason = f"Startbedingung erfüllt. Miner startet in {wait_remaining // 60}:{wait_remaining % 60:02d}, wenn genug PV stabil bleibt."
+            reason = f"{auto_desired_state.reason} Miner startet in {wait_remaining // 60}:{wait_remaining % 60:02d}, wenn genug PV stabil bleibt."
         if override == "auto" and auto_desired_state.action == "pause" and action == "pause" and auto_desired_state.immediate_pause:
             title = auto_desired_state.title
             reason = auto_desired_state.reason
