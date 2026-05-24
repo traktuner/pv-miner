@@ -1019,20 +1019,21 @@ class PowerController:
     def _decide_auto(self, pf: dict, cfg: dict, miner_w_now: int) -> DesiredState:
         base = self._decide_summer(pf, cfg, miner_w_now)
         nums = base.nums
+        immediate_failures, delayed_failures = self._pause_rule_failures(pf, cfg)
+
+        if immediate_failures:
+            return DesiredState(
+                "pause",
+                "Akku-Schutz aktiv",
+                f"{self._rule_list_text(immediate_failures)}. Miner bleibt aus.",
+                nums,
+                hashrate_target_th=base.hashrate_target_th,
+                power_target_w=base.power_target_w,
+                profile=base.profile,
+                immediate_pause=True,
+            )
 
         if self._cur_action == "run":
-            immediate_failures, delayed_failures = self._pause_rule_failures(pf, cfg)
-            if immediate_failures:
-                return DesiredState(
-                    "pause",
-                    "Akku-Schutz aktiv",
-                    f"{self._rule_list_text(immediate_failures)}. Miner pausiert sofort.",
-                    nums,
-                    hashrate_target_th=base.hashrate_target_th,
-                    power_target_w=base.power_target_w,
-                    profile=base.profile,
-                    immediate_pause=True,
-                )
             if delayed_failures:
                 return DesiredState(
                     "pause",
@@ -1522,6 +1523,9 @@ class PowerController:
         if auto_desired_state.action == "run" and auto_action == "pause":
             auto_preview_title = "Start wartet"
             auto_preview_reason = "Startbedingung erfüllt. Beim Umschalten auf Auto startet der Miner erst nach stabiler Sonne."
+        elif auto_desired_state.action == "pause" and auto_desired_state.immediate_pause:
+            auto_preview_title = "Pausieren"
+            auto_preview_reason = auto_desired_state.reason
         elif auto_desired_state.action == "pause" and auto_action == "run":
             auto_preview_title = "Mining bleibt aktiv"
             auto_preview_reason = "Auto würde vorerst weiterlaufen und erst pausieren, wenn der Zustand länger anhält."
