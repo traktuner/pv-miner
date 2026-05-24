@@ -998,18 +998,6 @@ class PowerController:
                 failures.append(f"Akku lädt nur mit {charge:.0f} W statt {limit} W")
         return failures
 
-    @staticmethod
-    def _target_start_failures(desired: DesiredState) -> list[str]:
-        if desired.power_target_w is None:
-            return []
-        available = float(desired.nums.get("available_w") or 0)
-        if available >= desired.power_target_w:
-            return []
-        missing = desired.power_target_w - available
-        return [
-            f"PV nach Hauslast {available:.0f} W deckt das Nacht-Ziel {desired.power_target_w} W nicht; es fehlen {missing:.0f} W"
-        ]
-
     def _pause_rule_failures(self, pf: dict, cfg: dict) -> tuple[list[str], list[str]]:
         ctrl = cfg.get("control", {})
         immediate: list[str] = []
@@ -1058,7 +1046,7 @@ class PowerController:
                 )
             return base
 
-        start_failures = self._target_start_failures(base) + self._start_rule_failures(pf, cfg)
+        start_failures = self._start_rule_failures(pf, cfg)
         if start_failures:
             return DesiredState(
                 "pause",
