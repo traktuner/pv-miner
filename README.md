@@ -38,15 +38,15 @@ Open the Web UI, switch to **Einstellungen**, and fill in:
 - **2. Wechselrichter IP** — optional; a second inverter (e.g. a Symo) that is *not* linked to the hybrid. Its PV is invisible to the hybrid's local API, so pv-miner queries it separately and adds it. Leave empty with a single inverter.
 - **Miner IP** — the Antminer running Braiins OS
 - **Braiins OS password** — the password of the `root` login; leave empty if none is set
-- **Automatik** — default `110 TH/s` above `4000 W` PV, `945 W` power target below `2000 W` PV, switching after `5 min` stable PV
+- **Automatik** — default `110 TH/s` above `4000 W` free PV surplus after house load, `945 W` power target below `2000 W` surplus, switching after `5 min` stable conditions
 - **Optionale Akku- und Netzregeln** — independently enable start guards and pause guards:
   - start only above a configured battery SOC
   - start only while the battery charges with at least a configured watt value
-  - pause below a configured battery SOC
+  - protect a configured battery reserve: below this SOC, mining only runs while PV covers its active low target without discharging the battery
   - pause when the battery discharges above a configured watt value
   - pause when grid import stays above a configured watt value
 - **Start erst nach stabiler Lage** — start delay after a pause, default `5 min`
-- **Pause-Verzögerung für Watt-Regeln** — delay before pausing on battery-discharge or grid-import rules, default `3 min`; SOC protection pauses immediately
+- **Pause-Verzögerung für Watt-Regeln** — delay before pausing on battery-discharge or grid-import rules, default `3 min`; battery-reserve protection reacts immediately when PV cannot cover the low target
 
 ## Docker
 
@@ -70,20 +70,25 @@ Docker updates are done by pulling a new image and recreating the container. The
 There is one automatic mode with optional battery and grid rules.
 
 ```
-if P_PV >= day_pv_threshold for switch_stable_minutes:
+available_for_miner = P_PV - house_consumption_without_miner
+
+if available_for_miner >= day_pv_threshold for switch_stable_minutes:
   target = high_hashrate_th
 
-if P_PV <= night_pv_threshold for switch_stable_minutes:
+if available_for_miner <= night_pv_threshold for switch_stable_minutes:
   target = low_power_watt
 
 if miner is stopped and any enabled start rule is not fulfilled:
   keep paused
 
+if battery reserve is violated and available_for_miner >= low_power_watt:
+  allow a start/run with low_power_watt; change to high only when its PV threshold is covered
+
+if battery reserve is violated and PV cannot cover low_power_watt without battery discharge:
+  pause miner immediately
+
 if miner is stopped and all start conditions are fulfilled for start_stable_minutes:
   resume miner and apply target
-
-if miner is running and enabled pause_soc is violated:
-  pause miner immediately
 
 if miner is running and enabled watt pause rule is violated for stop_stable_minutes:
   pause miner
@@ -92,7 +97,7 @@ if miner is running and no enabled pause rule is violated:
   keep mining and apply target changes when needed
 ```
 
-Start conditions only gate starting; they do not stop a running miner. If no optional start rule is enabled and no hard pause guard is active, Auto may start in low-PV/night mode and use the configured power target. SOC pause is a hard battery guard and pauses immediately. Watt pause rules for battery discharge and grid import are delayed by `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. If both start SOC and pause SOC are enabled, start SOC must be higher than pause SOC to avoid restart/stop chatter at one threshold. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
+Start conditions only gate starting; they do not stop a running miner. The SOC reserve is different: below its limit Auto does not consume battery energy for mining, but it may resume with the low power target when current PV surplus covers that target. This permits morning mining while a low battery continues charging. Watt pause rules for battery discharge and grid import are delayed by `stop_stable_minutes`, so short heat-pump or household load spikes are tolerated. If both start SOC and reserve SOC are enabled, start SOC must be higher than reserve SOC to avoid contradictory settings. Every pause/resume is verified — pv-miner polls the miner afterwards and reports in the web UI whether the command was actually confirmed.
 
 Target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target. Settings saves only update `/data/config.json`; miner API calls are made later by the single control loop, one desired state at a time.
 
@@ -105,7 +110,7 @@ The **Live** page shows the current decision, active target, PV profile, house l
 
 ## Override buttons
 
-The **Live** buttons change the active runtime mode. Changes are debounced for 10 seconds so accidental clicks do not spam the miner API:
+The **Live** buttons change the active runtime mode. A selection is saved immediately and applied after it remains selected for 10 seconds, so a page reload cannot lose it and accidental clicks do not spam the miner API:
 
 | Button | Effect |
 |---|---|
