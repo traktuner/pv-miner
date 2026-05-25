@@ -1086,6 +1086,7 @@ class PowerController:
             available = float(nums.get("available_w") or 0)
             battery_discharge = max(0.0, float(pf.get("p_akku") or 0))
             if available >= low_w and (self._cur_action != "run" or battery_discharge <= 0):
+                day_w = int(cfg.get("summer", {}).get("day_pv_threshold_watt", 4000))
                 if self._cur_action != "run":
                     start_failures = self._start_rule_failures(pf, cfg)
                     if start_failures:
@@ -1097,7 +1098,6 @@ class PowerController:
                             power_target_w=low_w,
                             profile="night",
                         )
-                day_w = int(cfg.get("summer", {}).get("day_pv_threshold_watt", 4000))
                 if base.profile == "day" and available >= day_w:
                     return DesiredState(
                         "run",
@@ -1107,10 +1107,18 @@ class PowerController:
                         hashrate_target_th=base.hashrate_target_th,
                         profile="day",
                     )
+                high_wait = ""
+                switch_remaining = self._summer_switch_remaining(cfg)
+                if available >= day_w and switch_remaining is not None:
+                    high_wait = (
+                        f" High ist vorbereitet; Wechsel in {switch_remaining // 60}:"
+                        f"{switch_remaining % 60:02d}, wenn der PV-Überschuss stabil bleibt."
+                    )
                 return DesiredState(
                     "run",
                     "Akku-Reserve geschützt",
-                    f"Akku ist unter Reserve, aber PV nach Hauslast deckt das Nacht-Ziel {low_w} W. Mining läuft mit Power Target.",
+                    f"Akku ist unter Reserve, aber PV nach Hauslast deckt das Nacht-Ziel {low_w} W. "
+                    f"Mining läuft mit Power Target.{high_wait}",
                     nums,
                     power_target_w=low_w,
                     profile="night",
