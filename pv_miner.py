@@ -184,7 +184,7 @@ HTML_PAGE = """<!DOCTYPE html>
       <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto verzögert bei stärkerer Akku-Entladung.</div></div>
       <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto verzögert bei dauerhaftem Netzbezug.</div></div>
       <div class="field"><label>Start erst nach stabiler Lage (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Gilt nur, wenn Auto gerade nicht läuft und die Start-Regeln erfüllt werden.</div></div>
-      <div class="field"><label>Pause-Verzögerung für Watt-Regeln (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für Akku-Entladung und Netzbezug. SOC-Schutz pausiert sofort.</div></div>
+      <div class="field"><label>Pause-Verzögerung für Watt-Regeln (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für Akku-Entladung und Netzbezug. Akku-Reserve reagiert sofort, wenn PV das Ziel nicht deckt.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
   </section>
