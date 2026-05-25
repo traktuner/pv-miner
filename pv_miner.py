@@ -16,7 +16,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from urllib.parse import quote, urlparse, urlunparse, parse_qsl, urlencode
 
 from flask import Flask, Response, jsonify, request
 import requests as _http
@@ -1827,11 +1827,28 @@ def _cache_busted_url(url: str) -> str:
     return urlunparse(parsed._replace(query=urlencode(query)))
 
 
+def _update_request(url: str) -> tuple[str, dict[str, str]]:
+    headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+    parsed = urlparse(url)
+    parts = parsed.path.strip("/").split("/")
+    if parsed.netloc == "raw.githubusercontent.com" and len(parts) >= 4:
+        owner, repo, ref, *file_parts = parts
+        api_path = quote("/".join(file_parts), safe="/")
+        api_url = (
+            f"https://api.github.com/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
+            f"/contents/{api_path}?{urlencode({'ref': ref})}"
+        )
+        headers["Accept"] = "application/vnd.github.raw+json"
+        return api_url, headers
+    return _cache_busted_url(url), headers
+
+
 def _download_update() -> tuple[bytes | None, str | None, str]:
     try:
+        url, headers = _update_request(UPDATE_URL)
         r = _http.get(
-            _cache_busted_url(UPDATE_URL),
-            headers={"Cache-Control": "no-cache", "Pragma": "no-cache"},
+            url,
+            headers=headers,
             timeout=15,
         )
         r.raise_for_status()
