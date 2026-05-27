@@ -1007,6 +1007,7 @@ class PowerController:
         self._stop_since: float | None = None
         self._summer_profile: str | None = None
         self._summer_switch_since: float | None = None
+        self._target_transition_resume_until: float | None = None
         self._fronius_err = 0
         self._braiins_err = 0
 
@@ -1438,8 +1439,13 @@ class PowerController:
             return
 
         if current_target_kind != desired_kind:
-            if not (self._braiins.set_performance_mode_target(desired_kind, desired_value)
-                    and self._braiins.verify_target_kind(desired_kind)):
+            mode_changed = self._braiins.set_performance_mode_target(desired_kind, desired_value)
+            if mode_changed and self._cur_action == "run":
+                # Braiins may briefly report idle/paused while applying a new
+                # tuning mode. This must not turn a live target transition into
+                # an Auto start-delay cycle.
+                self._target_transition_resume_until = time.monotonic() + 300
+            if not (mode_changed and self._braiins.verify_target_kind(desired_kind)):
                 self._braiins_err = max(self._braiins_err, before_err) + 1
                 self._state.update(command_state="failed", command_msg="Braiins Zielmodus wurde nicht bestätigt")
                 return
@@ -1654,10 +1660,19 @@ class PowerController:
             auto_preview_reason = auto_desired_state.reason
 
         force_auto_start = override == "auto" and bool(cfg.get("modes", {}).get("resume_auto_now"))
+        transition_resume = (
+            override == "auto"
+            and self._target_transition_resume_until is not None
+            and time.monotonic() <= self._target_transition_resume_until
+            and self._cur_action == "pause"
+            and auto_desired_state.action == "run"
+        )
+        if self._target_transition_resume_until is not None and time.monotonic() > self._target_transition_resume_until:
+            self._target_transition_resume_until = None
         action = self._auto_gate(
             auto_desired_state.action,
             cfg,
-            force_auto_start,
+            force_auto_start or transition_resume,
             auto_desired_state.immediate_pause,
         )
         if force_auto_start:
@@ -1680,6 +1695,9 @@ class PowerController:
         if force_auto_start and auto_desired_state.action == "run" and action == "run":
             title = "Auto aktiviert"
             reason = "Auto hat die aktuelle Startbedingung sofort angewendet."
+        if transition_resume and action == "run":
+            title = "Zielwechsel wird fortgesetzt"
+            reason = "Braiins hat den Miner beim Zielwechsel kurz angehalten. Auto setzt Mining ohne Startwartezeit fort."
         if override == "auto" and auto_desired_state.action == "run" and action == "pause" and self._start_since is not None:
             wait_s = max(0, float(cfg["control"].get("start_stable_minutes", 5))) * 60
             wait_remaining = max(0, int(wait_s - (time.monotonic() - self._start_since)))
@@ -1723,6 +1741,8 @@ class PowerController:
                            pf["soc"], pf["p_pv"], desired_state.profile, desired_state.target_kind,
                            desired_state.hashrate_target_th or desired_state.power_target_w, action.upper())
         self._apply_desired(desired_state, current_hashrate_th, current_power_target_w, current_target_kind)
+        if transition_resume and self._cur_action == "run":
+            self._target_transition_resume_until = None
 
 # ---------------------------------------------------------------------------
 # Flask web app
