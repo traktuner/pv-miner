@@ -2,7 +2,7 @@
 
 Controls an Antminer S19j Pro (Braiins OS) based on PV production and battery data from a Fronius GEN24 Plus + BYD HVS system. Runs as a minimal Alpine LXC container on Proxmox or as a small Docker container — no Home Assistant required.
 
-**Modes:** Auto mines continuously by default, uses a Braiins OS hashrate target during the day, and uses a lower power target in the evening/night. Optional battery and grid rules can delay starts or pause mining. Pause, Fix Hashrate, and Fix Watt are manual overrides. pv-miner never changes fan settings.
+**Modes:** Auto mines continuously by default, uses a Braiins OS hashrate target during the day, and uses a lower power target in the evening/night. Optional battery and grid rules can delay starts or pause mining. Pause, Fix Hashrate, Fix Watt, and Off are manual overrides. Off disables every Braiins API read and write so the miner can be controlled directly in its own UI. pv-miner never changes fan settings.
 
 ## One-line install
 
@@ -101,6 +101,8 @@ Start conditions only gate starting; they do not stop a running miner. The SOC r
 
 Target writes are idempotent: pv-miner reads the current Braiins OS target first. If the target type changes, it explicitly switches Braiins OS via `PUT /performance/mode`, waits until the active target type is confirmed, then sets the value with `PUT /performance/hashrate-target` or `PUT /performance/power-target` and verifies the resulting target. Braiins OS may briefly report the miner stopped while applying a target-type change; if Auto still permits mining, pv-miner resumes it immediately without applying the normal start delay. Settings saves only update `/data/config.json`; miner API calls are made later by the single control loop, one desired state at a time.
 
+In **Off**, the control loop still reads Fronius for the live PV, grid, battery, and total-load cards, but it skips the Braiins client completely. It does not read miner status, pause/resume, inspect targets, or write targets. Miner-derived values are therefore shown as unavailable.
+
 The **Live** page shows the current decision, active target, PV profile, house load without miner, and timers. Device IPs and tuning values live on the **Einstellungen** page to keep the dashboard compact.
 
 ## API assumptions
@@ -118,6 +120,7 @@ The **Live** buttons change the active runtime mode. A selection is saved immedi
 | Pause | Force pause |
 | Fix Hashrate | Mine permanently with the configured Tag Hashrate Target |
 | Fix Watt | Mine permanently with the configured Nacht Power Target |
+| Off | Leave the miner untouched and make no Braiins API requests |
 
 ## Customising the install
 

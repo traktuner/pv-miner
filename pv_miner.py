@@ -28,6 +28,7 @@ UPDATE_URL  = os.environ.get(
     "UPDATE_URL",
     "https://raw.githubusercontent.com/traktuner/pv-miner/master/pv_miner.py",
 )
+RUN_MODES = ("auto", "pause", "fixed_hashrate", "fixed_power", "off")
 
 DEFAULT_CONFIG: dict = {
     "fronius": {
@@ -65,7 +66,7 @@ DEFAULT_CONFIG: dict = {
         "active": "auto",
     },
     "modes": {
-        # "auto" | "pause" | "fixed_hashrate" | "fixed_power"
+        # See RUN_MODES.
         "manual_override": "auto",
         "pending_override": None,
         "pending_apply_at": None,
@@ -90,7 +91,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <title>pv-miner</title>
 <style>
 :root{--bg:#0b1020;--panel:#111827;--panel2:#162033;--line:#263244;--text:#eef4ff;--muted:#8ea0b8;--green:#35d07f;--amber:#f4bd50;--red:#ff6370;--blue:#58a6ff;--cyan:#3ddbd9}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input:not([type=checkbox]){background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input[type=checkbox]{width:1rem;height:1rem;margin-right:7px;vertical-align:-2px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}.badge.off{color:#07111f;background:var(--amber);border-color:var(--amber)}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input:not([type=checkbox]){background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input[type=checkbox]{width:1rem;height:1rem;margin-right:7px;vertical-align:-2px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
 </style>
 </head>
 <body>
@@ -137,8 +138,9 @@ HTML_PAGE = """<!DOCTYPE html>
         <button id="run-pause" onclick="setRunMode('pause')">Pause</button>
         <button id="run-fixed_hashrate" onclick="setRunMode('fixed_hashrate')">Fix Hashrate</button>
         <button id="run-fixed_power" onclick="setRunMode('fixed_power')">Fix Watt</button>
+        <button id="run-off" onclick="setRunMode('off')">Off</button>
       </div>
-      <div class="hint" style="margin-top:10px">Auto nutzt Tag/Nacht-Ziele und die aktivierten Akku-/Netzregeln. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel, Fix Watt das Nacht-Ziel.</div>
+      <div class="hint" style="margin-top:10px">Auto nutzt Tag/Nacht-Ziele und die aktivierten Akku-/Netzregeln. Pause stoppt. Fix Hashrate nutzt das Tag-Ziel, Fix Watt das Nacht-Ziel. Off deaktiviert alle Braiins-API-Zugriffe und lässt den Miner unangetastet.</div>
       <div class="hint" style="margin-top:10px"><b id="auto-preview">Auto würde: —</b></div>
       <div id="auto-preview-reason" class="hint" style="margin-top:4px"></div>
       <div id="cmdmsg" class="hint" style="margin-top:8px"></div>
@@ -216,7 +218,7 @@ function runKey(active,override){
 }
 function setRunUi(mode){
   const current=mode||'auto';
-  ['auto','pause','fixed_hashrate','fixed_power'].forEach(m=>el('run-'+m)?.classList.toggle('active',m===current));
+  ['auto','pause','fixed_hashrate','fixed_power','off'].forEach(m=>el('run-'+m)?.classList.toggle('active',m===current));
 }
 async function sendRunMode(mode){
   const body={mode};
@@ -267,7 +269,7 @@ function renderDecisionReason(){
   el('decision-reason').textContent=decisionTimer.base.replace(decisionTimer.re,decisionTimer.text(left));
 }
 function modeLabel(mode){
-  return {auto:'Auto',pause:'Pause',fixed_hashrate:'Fix Hashrate',fixed_power:'Fix Watt'}[mode]||mode;
+  return {auto:'Auto',pause:'Pause',fixed_hashrate:'Fix Hashrate',fixed_power:'Fix Watt',off:'Off'}[mode]||mode;
 }
 function setModeSwitchStatus(d){
   if(d.pending_override && Number.isFinite(+d.mode_switch_remaining_s)){
@@ -312,14 +314,15 @@ async function fetchStatus(){
     el('l-pgrid').textContent=d.p_grid==null?'Netz':(d.p_grid<0?'Netz Einspeisung':(d.p_grid>0?'Netz Bezug':'Netz neutral')); el('v-pgrid').textContent=absw(d.p_grid);
     el('l-pakku').textContent=d.p_akku==null?'Batterie':(d.p_akku>0?'Batterie entlädt':(d.p_akku<0?'Batterie lädt':'Batterie neutral')); el('v-pakku').textContent=absw(d.p_akku);
     const fixed=d.manual_override==='fixed_hashrate'||d.manual_override==='fixed_power';
-    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=fixed?'Fix':(d.summer_profile==='day'?'Tag':'Nacht'); el('v-miner-need').textContent=targetValue(d,false); el('v-buffer').textContent=d.summer_switch_remaining_s!=null?fmtTimer(d.summer_switch_remaining_s):'—';
-    el('l-batt-reserve').textContent=fixed?'Override':'PV-Profil';
-    el('l-miner-need').textContent=d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell';
-    el('l-required').textContent=fixed?'Fix Ziel':(d.summer_target_kind==='power'?'Power Target':'Hashrate Target');
-    el('v-required').textContent=targetValue(d,true);
-    el('v-required-sub').textContent=fixed?'Fix-Modus übersteuert die Automatik bis du wieder Auto aktivierst.':'Auto nutzt PV-Überschuss nach Hauslast; unter Akku-Reserve nur mit gedecktem Ziel.';
+    const off=d.manual_override==='off';
+    el('v-house').textContent=fw(d.house_without_miner_w); el('v-batt-reserve').textContent=off?'Aus':(fixed?'Fix':(d.summer_profile==='day'?'Tag':'Nacht')); el('v-miner-need').textContent=targetValue(d,false); el('v-buffer').textContent=d.summer_switch_remaining_s!=null?fmtTimer(d.summer_switch_remaining_s):'—';
+    el('l-batt-reserve').textContent=off?'Braiins API':(fixed?'Override':'PV-Profil');
+    el('l-miner-need').textContent=off?'Miner-Status':(d.summer_target_kind==='power'?'Power Target aktuell':'Hashrate Target aktuell');
+    el('l-required').textContent=off?'Miner-Steuerung':(fixed?'Fix Ziel':(d.summer_target_kind==='power'?'Power Target':'Hashrate Target'));
+    el('v-required').textContent=off?'Off':targetValue(d,true);
+    el('v-required-sub').textContent=off?'Keine Lese- oder Schreibzugriffe auf Braiins OS.':(fixed?'Fix-Modus übersteuert die Automatik bis du wieder Auto aktivierst.':'Auto nutzt PV-Überschuss nach Hauslast; unter Akku-Reserve nur mit gedecktem Ziel.');
     el('l-verfuegbar').textContent='PV für Miner'; el('v-verfuegbar').textContent=fw(d.available_w); el('v-next').textContent=(d.poll_interval_seconds||30)+' s';
-    const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':'—');
+    const st=d.display_state||'unknown'; const b=el('badge'); b.className='badge '+st; b.textContent=st==='mining'?'Mining':(st==='paused'?'Pausiert':(st==='off'?'Off':'—'));
     el('decision-title').textContent=d.decision_title||'Warte auf Daten'; setDecisionReason(d);
     el('auto-preview').textContent=d.auto_preview_title?`Auto würde: ${d.auto_preview_title}`:'Auto würde: —';
     el('auto-preview-reason').textContent=d.auto_preview_reason||'';
@@ -446,7 +449,7 @@ class ConfigManager:
             modes = self._cfg.setdefault("modes", {})
             pending = modes.get("pending_override")
             apply_at = modes.get("pending_apply_at")
-            if pending not in ("auto", "pause", "fixed_hashrate", "fixed_power") or apply_at is None:
+            if pending not in RUN_MODES or apply_at is None:
                 return False
             try:
                 due = float(apply_at)
@@ -1213,7 +1216,7 @@ class PowerController:
     @staticmethod
     def _override(cfg: dict) -> str:
         override = cfg.get("modes", {}).get("manual_override", "auto")
-        return override if override in ("auto", "pause", "fixed_hashrate", "fixed_power") else "auto"
+        return override if override in RUN_MODES else "auto"
 
     def _fixed_override_state(self, cfg: dict, nums: dict) -> DesiredState | None:
         override = self._override(cfg)
@@ -1497,6 +1500,62 @@ class PowerController:
         )
         self._state.update(command_state="failed", command_msg=msg)
 
+    def _publish_off_state(self, pf: dict | None, active_mode: str, poll_interval: int,
+                           pending_override: str | None,
+                           mode_switch_remaining: int | None) -> None:
+        """Publish live Fronius data without touching the Braiins API."""
+        self._cur_action = None
+        self._start_since = None
+        self._stop_since = None
+        self._summer_profile = None
+        self._summer_switch_since = None
+        self._target_transition_resume_until = None
+
+        if pf is None:
+            self._fronius_err += 1
+            self._log.warning("Fronius unreachable while Braiins control is off (streak: %d)",
+                              self._fronius_err)
+        else:
+            self._fronius_err = 0
+
+        self._state.update(
+            soc=pf.get("soc") if pf else None,
+            p_grid=pf.get("p_grid") if pf else None,
+            p_pv=pf.get("p_pv") if pf else None,
+            p_akku=pf.get("p_akku") if pf else None,
+            p_load=pf.get("p_load") if pf else None,
+            house_without_miner_w=None,
+            battery_charge_now_w=max(0.0, -float(pf.get("p_akku") or 0)) if pf else None,
+            available_w=None,
+            miner_power_w=None,
+            hashrate_target_th=None,
+            power_target_w=None,
+            desired_hashrate_target_th=None,
+            desired_power_target_w=None,
+            display_state="off",
+            manual_override="off",
+            pending_override=pending_override,
+            mode_switch_remaining_s=mode_switch_remaining,
+            active_mode=active_mode,
+            summer_profile=None,
+            summer_target_kind=None,
+            poll_interval_seconds=poll_interval,
+            decision_title="Off – Miner-Steuerung aus",
+            decision_reason=(
+                "Braiins OS wird weder abgefragt noch gesteuert. "
+                "Der Miner bleibt unverändert und kann direkt im Braiins GUI bedient werden."
+            ),
+            start_wait_remaining_s=None,
+            stop_wait_remaining_s=None,
+            summer_switch_remaining_s=None,
+            auto_preview_action=None,
+            auto_preview_title="Nicht berechnet",
+            auto_preview_reason="Off fragt den Miner nicht ab und berechnet deshalb keine Automatikentscheidung.",
+            command_state=None,
+            command_msg=None,
+        )
+        self._log.info("[cycle] override=off -> Braiins API skipped")
+
     def run_cycle(self) -> None:
         self._cfg.apply_pending_run_mode()
         cfg = self._cfg.get()
@@ -1506,7 +1565,7 @@ class PowerController:
         pending_override = modes.get("pending_override")
         pending_apply_at = modes.get("pending_apply_at")
         mode_switch_remaining = None
-        if pending_override in ("auto", "pause", "fixed_hashrate", "fixed_power") and pending_apply_at is not None:
+        if pending_override in RUN_MODES and pending_apply_at is not None:
             try:
                 mode_switch_remaining = max(0, math.ceil(float(pending_apply_at) - time.time()))
             except (TypeError, ValueError):
@@ -1514,6 +1573,15 @@ class PowerController:
         poll_interval = cfg.get("fronius", {}).get("poll_interval_seconds", 30)
         miner_host = cfg.get("miner", {}).get("host")
         pf = self._fronius.get_powerflow()
+        if override == "off":
+            self._publish_off_state(
+                pf,
+                active_mode,
+                poll_interval,
+                pending_override,
+                mode_switch_remaining,
+            )
+            return
         miner_st = self._braiins.get_status() if miner_host else None
         miner_w_now = miner_st["power_watt"] if miner_st else 0
         current_hashrate_th = miner_st.get("hashrate_target_th") if miner_st else None
@@ -1757,7 +1825,7 @@ def validate_config_patch(data: dict) -> str | None:
     try:
         if mode.get("active", "auto") not in ("auto", "battery_auto", "summer_24h"):
             return "Betriebsmodus ist ungültig"
-        if modes and modes.get("manual_override", "auto") not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
+        if modes and modes.get("manual_override", "auto") not in RUN_MODES:
             return "Steuerungsmodus ist ungültig"
         if not (0 <= float(ctrl.get("start_soc_percent", 80)) <= 100):
             return "Start-SOC muss zwischen 0 und 100% liegen"
@@ -1827,7 +1895,7 @@ def normalize_config_patch(data: dict) -> None:
     modes = data.setdefault("modes", {})
     if modes.get("manual_override") == "run":
         modes["manual_override"] = "auto"
-    if modes.get("pending_override") not in (None, "auto", "pause", "fixed_hashrate", "fixed_power"):
+    if modes.get("pending_override") is not None and modes.get("pending_override") not in RUN_MODES:
         modes["pending_override"] = None
         modes["pending_apply_at"] = None
     modes.pop("fixed_hashrate_th", None)
@@ -2017,7 +2085,7 @@ def create_app(cfg_manager: ConfigManager, state: StateStore,
         data = request.get_json(silent=True) or {}
         override = data.get("override", data.get("mode", "auto"))
         active_mode = data.get("active_mode")
-        if override not in ("auto", "pause", "fixed_hashrate", "fixed_power"):
+        if override not in RUN_MODES:
             return jsonify({"error": "Invalid mode"}), 400
         if active_mode in ("battery_auto", "summer_24h"):
             active_mode = "auto"
