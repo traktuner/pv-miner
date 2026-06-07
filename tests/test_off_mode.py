@@ -19,7 +19,13 @@ try:
 except ModuleNotFoundError:
     sys.modules["requests"] = types.ModuleType("requests")
 
-from pv_miner import ConfigManager, PowerController, StateStore
+from pv_miner import (
+    ConfigManager,
+    PowerController,
+    StateStore,
+    normalize_config_patch,
+    validate_config_patch,
+)
 
 
 class FakeFronius:
@@ -100,6 +106,85 @@ class OffModeTests(unittest.TestCase):
         self.assertIsNotNone(apply_at)
         self.assertTrue(self.config.apply_pending_run_mode())
         self.assertEqual(self.config.get()["modes"]["manual_override"], "off")
+
+
+class ConfigValidationTests(unittest.TestCase):
+    @staticmethod
+    def valid_config():
+        return {
+            "fronius": {"poll_interval_seconds": 30},
+            "control": {
+                "enable_start_soc": False,
+                "start_soc_percent": 80,
+                "start_battery_charge_watt": 2000,
+                "enable_pause_soc": True,
+                "pause_soc_percent": 30,
+                "pause_battery_discharge_watt": 300,
+                "pause_grid_import_watt": 300,
+                "start_stable_minutes": 5,
+                "stop_stable_minutes": 3,
+            },
+            "summer": {
+                "day_pv_threshold_watt": 4000,
+                "night_pv_threshold_watt": 2000,
+                "high_hashrate_th": 110.5,
+                "low_power_watt": 945,
+                "switch_stable_minutes": 5,
+            },
+            "mode": {"active": "auto"},
+            "modes": {"manual_override": "auto"},
+        }
+
+    def test_rejects_text_in_numeric_field(self):
+        config = self.valid_config()
+        config["control"]["pause_soc_percent"] = "abc"
+
+        self.assertEqual(validate_config_patch(config), "Akku-Reserve muss eine Zahl sein")
+
+    def test_rejects_out_of_range_poll_interval(self):
+        config = self.valid_config()
+        config["fronius"]["poll_interval_seconds"] = 5
+
+        self.assertEqual(
+            validate_config_patch(config),
+            "Abfrage-Intervall muss zwischen 10 und 300 liegen",
+        )
+
+    def test_rejects_fraction_in_integer_field(self):
+        config = self.valid_config()
+        config["control"]["pause_battery_discharge_watt"] = 300.5
+
+        self.assertEqual(
+            validate_config_patch(config),
+            "Akku-Entladung muss eine ganze Zahl sein",
+        )
+
+    def test_accepts_decimal_soc_and_hashrate(self):
+        config = self.valid_config()
+        config["control"]["pause_soc_percent"] = 30.5
+        config["summer"]["high_hashrate_th"] = 104.5
+
+        self.assertIsNone(validate_config_patch(config))
+
+    def test_normalizes_power_target_below_braiins_minimum(self):
+        config = self.valid_config()
+        config["summer"]["low_power_watt"] = 500
+
+        normalize_config_patch(config)
+
+        self.assertEqual(config["summer"]["low_power_watt"], 945)
+        self.assertIsNone(validate_config_patch(config))
+
+    def test_rejects_invalid_power_target_during_save(self):
+        config = self.valid_config()
+        config["summer"]["low_power_watt"] = "abc"
+
+        normalize_config_patch(config, repair_invalid=False)
+
+        self.assertEqual(
+            validate_config_patch(config),
+            "Nacht Power Target muss eine Zahl sein",
+        )
 
 
 if __name__ == "__main__":

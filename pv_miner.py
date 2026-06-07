@@ -92,6 +92,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <style>
 :root{--bg:#0b1020;--panel:#111827;--panel2:#162033;--line:#263244;--text:#eef4ff;--muted:#8ea0b8;--green:#35d07f;--amber:#f4bd50;--red:#ff6370;--blue:#58a6ff;--cyan:#3ddbd9}
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09111f 0%,#0d1324 55%,#0a0f1c 100%);color:var(--text);min-height:100vh}button,input{font:inherit}header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(12,18,32,.84);backdrop-filter:blur(12px);position:sticky;top:0;z-index:2}h1{font-size:1.05rem;font-weight:760;letter-spacing:.01em}.head-left{display:flex;align-items:center;gap:16px}.tabs{display:flex;gap:6px}.tabs button{border:1px solid var(--line);background:#141d2e;color:var(--muted);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:.82rem;font-weight:760}.tabs button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.view{display:none}.view.active{display:block}.badge{padding:7px 12px;border-radius:999px;font-size:.78rem;font-weight:800;border:1px solid var(--line)}.badge.mining{color:#08150f;background:var(--green);border-color:var(--green)}.badge.paused{color:#22080b;background:var(--red);border-color:var(--red)}.badge.unknown{color:var(--muted);background:#151c2b}.badge.off{color:#07111f;background:var(--amber);border-color:var(--amber)}main{max-width:1180px;margin:0 auto;padding:22px}.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px;margin-bottom:18px}.decision{background:linear-gradient(135deg,#15243a,#101827);border:1px solid var(--line);border-radius:10px;padding:20px;min-height:190px;display:flex;flex-direction:column;justify-content:space-between}.decision .eyebrow{font-size:.76rem;color:var(--muted);text-transform:uppercase;font-weight:750;letter-spacing:.07em}.decision h2{font-size:1.55rem;line-height:1.15;margin:8px 0 10px}.decision p{color:#c8d5e8;font-size:.95rem;line-height:1.45}.threshold{background:#101827;border:1px solid var(--line);border-radius:10px;padding:16px}.threshold .big{font-size:2rem;font-weight:850;font-variant-numeric:tabular-nums}.threshold .sub{color:var(--muted);font-size:.8rem;margin-top:4px}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}.card{background:rgba(17,24,39,.95);border:1px solid var(--line);border-radius:8px;padding:14px;min-height:88px}.card .lbl{color:var(--muted);font-size:.76rem;font-weight:680;margin-bottom:7px}.card .val{font-size:1.35rem;font-weight:820;font-variant-numeric:tabular-nums}.card.good .val{color:var(--green)}.card.warn .val{color:var(--amber)}.card.bad .val{color:var(--red)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}section h3{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}.ov-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ov-row button,.btn-save{border:1px solid var(--line);border-radius:7px;background:#182236;color:var(--text);padding:9px 14px;cursor:pointer;font-size:.9rem;font-weight:700}.ov-row button:hover,.btn-save:hover{background:#202d45}.ov-row button.active{background:var(--blue);border-color:var(--blue);color:#07111f}.btn-save{background:#1f8f55;border-color:#2ac06e}.fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:.8rem;font-weight:720;color:#c9d6e8}.field input:not([type=checkbox]){background:#0c1322;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:9px 10px}.field input[type=checkbox]{width:1rem;height:1rem;margin-right:7px;vertical-align:-2px}.field input:focus{outline:none;border-color:var(--blue)}.hint{font-size:.76rem;color:var(--muted);line-height:1.4}.hint em{font-style:normal;color:#e8f1ff;font-weight:800}.ok{color:var(--green);font-size:.85rem}.err{color:var(--red);font-size:.85rem}.ts{color:var(--muted);font-size:.76rem;margin-left:10px}.fixed-targets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.fixed-targets .field{display:none}.fixed-targets .field.active{display:flex}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.flow div{background:#0d1526;border:1px solid var(--line);border-radius:8px;padding:10px}.flow span{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}.flow b{font-size:1rem;font-variant-numeric:tabular-nums}@media(max-width:850px){.hero,.grid{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}.fg,.fixed-targets{grid-template-columns:1fr}}@media(max-width:520px){main{padding:12px}header{padding:0 14px}.head-left{gap:10px}.tabs button{padding:6px 8px}.cards{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.decision h2{font-size:1.25rem}}
+.field input.invalid{border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 </style>
 </head>
 <body>
@@ -168,25 +169,25 @@ HTML_PAGE = """<!DOCTYPE html>
   <section id="settings-auto">
     <h3>Automatik</h3>
     <div class="fg">
-      <div class="field"><label>High ab PV-Überschuss (W)</label><input id="f-daypv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-daypv">Überschuss nach Hausverbrauch; ab diesem Wert wird auf Hashrate Target gewechselt.</div></div>
-      <div class="field"><label>Low unter PV-Überschuss (W)</label><input id="f-nightpv" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-nightpv">Unter diesem Überschuss wird auf Power Target gewechselt.</div></div>
-      <div class="field"><label>Tag Hashrate Target (TH/s)</label><input id="f-highth" type="number" min="1" max="200" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-highth">Hashrate Target für Tag/Sonne.</div></div>
-      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="1" oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
-      <div class="field"><label>Wechsel erst nach stabil (Minuten)</label><input id="f-switchmin" type="number" min="1" max="120" oninput="updateConfigHints()"><div class="hint" id="h-switchmin">PV muss so lange stabil über/unter der Schwelle bleiben.</div></div>
-      <div class="field"><label>Abfrage-Intervall (Sekunden)</label><input id="f-pi" type="number" min="10" max="300"><div class="hint">Wie oft Fronius und Miner abgefragt werden.</div></div>
+      <div class="field"><label>High ab PV-Überschuss (W)</label><input id="f-daypv" type="number" min="0" max="30000" step="100" required oninput="updateConfigHints()"><div class="hint" id="h-daypv">Überschuss nach Hausverbrauch; ab diesem Wert wird auf Hashrate Target gewechselt.</div></div>
+      <div class="field"><label>Low unter PV-Überschuss (W)</label><input id="f-nightpv" type="number" min="0" max="30000" step="100" required oninput="updateConfigHints()"><div class="hint" id="h-nightpv">Unter diesem Überschuss wird auf Power Target gewechselt.</div></div>
+      <div class="field"><label>Tag Hashrate Target (TH/s)</label><input id="f-highth" type="number" min="1" max="200" step="0.1" required oninput="updateConfigHints()"><div class="hint" id="h-highth">Hashrate Target für Tag/Sonne.</div></div>
+      <div class="field"><label>Nacht Power Target (W)</label><input id="f-loww" type="number" min="945" max="7000" step="1" required oninput="updateConfigHints()"><div class="hint" id="h-loww">Power Target für Nacht/wenig PV.</div></div>
+      <div class="field"><label>Wechsel erst nach stabil (Minuten)</label><input id="f-switchmin" type="number" min="1" max="120" step="1" required oninput="updateConfigHints()"><div class="hint" id="h-switchmin">PV muss so lange stabil über/unter der Schwelle bleiben.</div></div>
+      <div class="field"><label>Abfrage-Intervall (Sekunden)</label><input id="f-pi" type="number" min="10" max="300" step="1" required><div class="hint">Wie oft Fronius und Miner abgefragt werden.</div></div>
     </div>
   </section>
 
   <section>
     <h3>Optionale Akku- und Netzregeln</h3>
     <div class="fg">
-      <div class="field"><label><input id="f-en-start-soc" type="checkbox" onchange="updateConfigHints()"> Start erst ab Akku-SOC</label><input id="f-start-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-start-soc">Wenn aktiv, startet Auto erst ab diesem Akku-Stand.</div></div>
-      <div class="field"><label><input id="f-en-start-charge" type="checkbox" onchange="updateConfigHints()"> Start erst bei Akku-Ladung</label><input id="f-start-charge" type="number" min="0" max="30000" step="100" oninput="updateConfigHints()"><div class="hint" id="h-start-charge">Wenn aktiv, startet Auto erst, wenn der Akku mindestens so stark lädt.</div></div>
-      <div class="field"><label><input id="f-en-pause-soc" type="checkbox" onchange="updateConfigHints()"> Akku-Reserve schützen unter SOC</label><input id="f-pause-soc" type="number" min="0" max="100" step="0.1" oninput="updateConfigHints()"><div class="hint" id="h-pause-soc">Unter der Reserve darf nur mit gedecktem PV-Nachtziel gemined werden.</div></div>
-      <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto verzögert bei stärkerer Akku-Entladung.</div></div>
-      <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto verzögert bei dauerhaftem Netzbezug.</div></div>
-      <div class="field"><label>Start erst nach stabiler Lage (Minuten)</label><input id="f-startmin" type="number" min="1" max="60"><div class="hint">Gilt nur, wenn Auto gerade nicht läuft und die Start-Regeln erfüllt werden.</div></div>
-      <div class="field"><label>Pause-Verzögerung für Watt-Regeln (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60"><div class="hint">Gilt nur für Akku-Entladung und Netzbezug. Akku-Reserve reagiert sofort, wenn PV das Ziel nicht deckt.</div></div>
+      <div class="field"><label><input id="f-en-start-soc" type="checkbox" onchange="updateConfigHints()"> Start erst ab Akku-SOC</label><input id="f-start-soc" type="number" min="0" max="100" step="0.1" required oninput="updateConfigHints()"><div class="hint" id="h-start-soc">Wenn aktiv, startet Auto erst ab diesem Akku-Stand.</div></div>
+      <div class="field"><label><input id="f-en-start-charge" type="checkbox" onchange="updateConfigHints()"> Start erst bei Akku-Ladung</label><input id="f-start-charge" type="number" min="0" max="30000" step="100" required oninput="updateConfigHints()"><div class="hint" id="h-start-charge">Wenn aktiv, startet Auto erst, wenn der Akku mindestens so stark lädt.</div></div>
+      <div class="field"><label><input id="f-en-pause-soc" type="checkbox" onchange="updateConfigHints()"> Akku-Reserve schützen unter SOC</label><input id="f-pause-soc" type="number" min="0" max="100" step="0.1" required oninput="updateConfigHints()"><div class="hint" id="h-pause-soc">Unter der Reserve darf nur mit gedecktem PV-Nachtziel gemined werden.</div></div>
+      <div class="field"><label><input id="f-en-pause-discharge" type="checkbox" onchange="updateConfigHints()"> Pause bei Akku-Entladung</label><input id="f-pause-discharge" type="number" min="0" max="10000" step="50" required oninput="updateConfigHints()"><div class="hint" id="h-pause-discharge">Wenn aktiv, pausiert Auto verzögert bei stärkerer Akku-Entladung.</div></div>
+      <div class="field"><label><input id="f-en-pause-grid" type="checkbox" onchange="updateConfigHints()"> Pause bei Netzbezug</label><input id="f-pause-grid" type="number" min="0" max="10000" step="50" required oninput="updateConfigHints()"><div class="hint" id="h-pause-grid">Wenn aktiv, pausiert Auto verzögert bei dauerhaftem Netzbezug.</div></div>
+      <div class="field"><label>Start erst nach stabiler Lage (Minuten)</label><input id="f-startmin" type="number" min="1" max="60" step="1" required><div class="hint">Gilt nur, wenn Auto gerade nicht läuft und die Start-Regeln erfüllt werden.</div></div>
+      <div class="field"><label>Pause-Verzögerung für Watt-Regeln (Minuten)</label><input id="f-stopmin" type="number" min="1" max="60" step="1" required><div class="hint">Gilt nur für Akku-Entladung und Netzbezug. Akku-Reserve reagiert sofort, wenn PV das Ziel nicht deckt.</div></div>
     </div>
     <div class="ov-row" style="margin-top:16px"><button class="btn-save" onclick="saveCfg()">Speichern</button><span id="smsg"></span></div>
   </section>
@@ -200,7 +201,65 @@ function showView(name){
     el('tab-'+v).classList.toggle('active',v===name);
   });
 }
-function n(id,def){const x=+el(id)?.value;return Number.isFinite(x)?x:def}
+function n(id,def){
+  const raw=el(id)?.value?.trim();
+  if(raw==null||raw==='') return def;
+  const x=Number(raw);
+  return Number.isFinite(x)?x:def;
+}
+const numericSettings=[
+  {id:'f-daypv',key:'dayPv',label:'High ab PV-Überschuss',min:0,max:30000,integer:true},
+  {id:'f-nightpv',key:'nightPv',label:'Low unter PV-Überschuss',min:0,max:30000,integer:true},
+  {id:'f-highth',key:'highTh',label:'Tag Hashrate Target',min:1,max:200},
+  {id:'f-loww',key:'lowW',label:'Nacht Power Target',min:945,max:7000,integer:true,clampMin:true},
+  {id:'f-switchmin',key:'switchMin',label:'Wechselzeit',min:1,max:120,integer:true},
+  {id:'f-pi',key:'pollInterval',label:'Abfrage-Intervall',min:10,max:300,integer:true},
+  {id:'f-start-soc',key:'startSoc',label:'Start-Akku-SOC',min:0,max:100},
+  {id:'f-start-charge',key:'startCharge',label:'Start-Akkuladung',min:0,max:30000,integer:true},
+  {id:'f-pause-soc',key:'pauseSoc',label:'Akku-Reserve',min:0,max:100},
+  {id:'f-pause-discharge',key:'pauseDischarge',label:'Akku-Entladung',min:0,max:10000,integer:true},
+  {id:'f-pause-grid',key:'pauseGrid',label:'Netzbezug',min:0,max:10000,integer:true},
+  {id:'f-startmin',key:'startMin',label:'Start-Wartezeit',min:1,max:60,integer:true},
+  {id:'f-stopmin',key:'stopMin',label:'Pause-Verzögerung',min:1,max:60,integer:true},
+];
+function clearNumericError(input){
+  input.classList.remove('invalid');
+  input.removeAttribute('aria-invalid');
+}
+function invalidNumeric(input,message){
+  input.classList.add('invalid');
+  input.setAttribute('aria-invalid','true');
+  return {input,message};
+}
+function validatedNumericSettings(){
+  const values={};
+  for(const spec of numericSettings){
+    const input=el(spec.id);
+    clearNumericError(input);
+    const raw=input.value.trim();
+    if(raw==='') return invalidNumeric(input,`${spec.label}: Bitte eine Zahl eingeben.`);
+    let value=Number(raw);
+    if(!Number.isFinite(value)) return invalidNumeric(input,`${spec.label}: Bitte eine gültige Zahl eingeben.`);
+    if(spec.clampMin&&value<spec.min){
+      value=spec.min;
+      input.value=String(value);
+    }
+    if(value<spec.min||value>spec.max){
+      return invalidNumeric(input,`${spec.label}: Erlaubt sind ${spec.min} bis ${spec.max}.`);
+    }
+    if(spec.integer&&!Number.isInteger(value)){
+      return invalidNumeric(input,`${spec.label}: Bitte eine ganze Zahl eingeben.`);
+    }
+    values[spec.key]=value;
+  }
+  if(values.nightPv>=values.dayPv){
+    return invalidNumeric(el('f-nightpv'),'Low unter PV-Überschuss muss kleiner als High sein.');
+  }
+  if(el('f-en-start-soc').checked&&el('f-en-pause-soc').checked&&values.startSoc<=values.pauseSoc){
+    return invalidNumeric(el('f-start-soc'),'Start-Akku-SOC muss höher als die Akku-Reserve sein.');
+  }
+  return {values};
+}
 function fw(v){return v==null?'—':Math.round(v)+' W'}
 function absw(v){return v==null?'—':Math.round(Math.abs(v))+' W'}
 function kw(v){return v==null?'—':(v/1000).toFixed(1)+' kW'}
@@ -354,8 +413,15 @@ async function fetchCfg(){
 }
 async function saveCfg(){
   const msg=el('smsg');
-  const loww=Math.max(945,n('f-loww',945)); el('f-loww').value=loww;
-  const cfg={mode:{active:'auto'},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:n('f-pi',30)},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim()},control:{enable_start_soc:el('f-en-start-soc').checked,start_soc_percent:n('f-start-soc',80),enable_start_battery_charge:el('f-en-start-charge').checked,start_battery_charge_watt:n('f-start-charge',2000),enable_pause_soc:el('f-en-pause-soc').checked,pause_soc_percent:n('f-pause-soc',30),enable_pause_battery_discharge:el('f-en-pause-discharge').checked,pause_battery_discharge_watt:n('f-pause-discharge',300),enable_pause_grid_import:el('f-en-pause-grid').checked,pause_grid_import_watt:n('f-pause-grid',300),start_stable_minutes:n('f-startmin',5),stop_stable_minutes:n('f-stopmin',3)},summer:{day_pv_threshold_watt:n('f-daypv',4000),night_pv_threshold_watt:n('f-nightpv',2000),high_hashrate_th:n('f-highth',110),low_power_watt:loww,switch_stable_minutes:n('f-switchmin',5)}};
+  const checked=validatedNumericSettings();
+  if(!checked.values){
+    msg.className='err';
+    msg.textContent=checked.message;
+    checked.input.focus();
+    return;
+  }
+  const v=checked.values;
+  const cfg={mode:{active:'auto'},fronius:{host:el('f-fh').value.trim(),pv2_host:el('f-fh2').value.trim(),poll_interval_seconds:v.pollInterval},miner:{host:el('f-mh').value.trim(),api_key:el('f-ak').value.trim()},control:{enable_start_soc:el('f-en-start-soc').checked,start_soc_percent:v.startSoc,enable_start_battery_charge:el('f-en-start-charge').checked,start_battery_charge_watt:v.startCharge,enable_pause_soc:el('f-en-pause-soc').checked,pause_soc_percent:v.pauseSoc,enable_pause_battery_discharge:el('f-en-pause-discharge').checked,pause_battery_discharge_watt:v.pauseDischarge,enable_pause_grid_import:el('f-en-pause-grid').checked,pause_grid_import_watt:v.pauseGrid,start_stable_minutes:v.startMin,stop_stable_minutes:v.stopMin},summer:{day_pv_threshold_watt:v.dayPv,night_pv_threshold_watt:v.nightPv,high_hashrate_th:v.highTh,low_power_watt:v.lowW,switch_stable_minutes:v.switchMin}};
   try{const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}); if(r.ok){msg.className='ok';msg.textContent='Gespeichert';}else{const e=await r.json();msg.className='err';msg.textContent=e.error||'Fehler';}}
   catch(e){msg.className='err';msg.textContent='Netzwerkfehler';}
   setTimeout(()=>{el('smsg').textContent='';},4000);
@@ -372,6 +438,9 @@ async function doUpdate(){
   msg.textContent='Update installiert, Service startet neu...'; let stable=0,tries=0,started=Date.now();
   const poll=setInterval(async()=>{tries++;try{const r=await fetch('/api/status?u='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error();await r.json();stable++;if(Date.now()-started<6000||stable<2)return;clearInterval(poll);msg.className='ok';msg.textContent='Update erfolgreich.';setTimeout(()=>location.reload(),1200);}catch(e){stable=0;if(tries>=60){clearInterval(poll);msg.className='err';msg.textContent='Service antwortet nicht. Logs prüfen.';btn.disabled=false;}}},1000);
 }
+document.addEventListener('input',event=>{
+  if(event.target.matches('input[type=number]')) clearNumericError(event.target);
+});
 fetchStatus();fetchCfg();setInterval(fetchStatus,10000);setInterval(()=>{renderDecisionReason();renderModeSwitchStatus();},1000);
 </script>
 </body>
@@ -1818,54 +1887,61 @@ class PowerController:
 
 def validate_config_patch(data: dict) -> str | None:
     ctrl = data.get("control", {})
+    fronius = data.get("fronius", {})
     mode = data.get("mode", {})
     summer = data.get("summer", {})
     modes = data.get("modes", {})
+
+    def bounded(section: dict, key: str, default: int | float, label: str,
+                minimum: int | float, maximum: int | float,
+                integer: bool = False) -> int | float:
+        raw = section.get(key, default)
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"{label} muss eine Zahl sein")
+        value = float(raw)
+        if not math.isfinite(value):
+            raise ValueError(f"{label} muss eine endliche Zahl sein")
+        if integer and not value.is_integer():
+            raise ValueError(f"{label} muss eine ganze Zahl sein")
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{label} muss zwischen {minimum} und {maximum} liegen")
+        return int(value) if integer else value
 
     try:
         if mode.get("active", "auto") not in ("auto", "battery_auto", "summer_24h"):
             return "Betriebsmodus ist ungültig"
         if modes and modes.get("manual_override", "auto") not in RUN_MODES:
             return "Steuerungsmodus ist ungültig"
-        if not (0 <= float(ctrl.get("start_soc_percent", 80)) <= 100):
-            return "Start-SOC muss zwischen 0 und 100% liegen"
-        if not (0 <= int(ctrl.get("start_battery_charge_watt", 2000)) <= 30000):
-            return "Start-Akkuladung muss zwischen 0 und 30000 W liegen"
-        if not (0 <= float(ctrl.get("pause_soc_percent", 30)) <= 100):
-            return "Pause-SOC muss zwischen 0 und 100% liegen"
+        bounded(fronius, "poll_interval_seconds", 30, "Abfrage-Intervall", 10, 300, integer=True)
+        start_soc = bounded(ctrl, "start_soc_percent", 80, "Start-SOC", 0, 100)
+        bounded(ctrl, "start_battery_charge_watt", 2000, "Start-Akkuladung", 0, 30000, integer=True)
+        pause_soc = bounded(ctrl, "pause_soc_percent", 30, "Akku-Reserve", 0, 100)
         if (
             bool(ctrl.get("enable_start_soc"))
             and bool(ctrl.get("enable_pause_soc"))
-            and float(ctrl.get("start_soc_percent", 80)) <= float(ctrl.get("pause_soc_percent", 30))
+            and start_soc <= pause_soc
         ):
             return "Start-SOC muss höher sein als Pause-SOC, sonst kann Auto direkt wieder stoppen"
-        if not (0 <= int(ctrl.get("pause_battery_discharge_watt", 300)) <= 10000):
-            return "Akku-Entladung muss zwischen 0 und 10000 W liegen"
-        if not (0 <= int(ctrl.get("pause_grid_import_watt", 300)) <= 10000):
-            return "Netzbezug muss zwischen 0 und 10000 W liegen"
-        if not (1 <= int(ctrl.get("start_stable_minutes", 5)) <= 60):
-            return "Start-Wartezeit muss zwischen 1 und 60 Minuten liegen"
-        if not (1 <= int(ctrl.get("stop_stable_minutes", 3)) <= 60):
-            return "Stop-Wartezeit muss zwischen 1 und 60 Minuten liegen"
-        day_pv = int(summer.get("day_pv_threshold_watt", 4000))
-        night_pv = int(summer.get("night_pv_threshold_watt", 2000))
-        if not (0 <= night_pv <= 30000 and 0 <= day_pv <= 30000):
-            return "PV-Schwellen müssen zwischen 0 und 30000 W liegen"
+        bounded(ctrl, "pause_battery_discharge_watt", 300, "Akku-Entladung", 0, 10000, integer=True)
+        bounded(ctrl, "pause_grid_import_watt", 300, "Netzbezug", 0, 10000, integer=True)
+        bounded(ctrl, "start_stable_minutes", 5, "Start-Wartezeit", 1, 60, integer=True)
+        bounded(ctrl, "stop_stable_minutes", 3, "Pause-Verzögerung", 1, 60, integer=True)
+        day_pv = bounded(summer, "day_pv_threshold_watt", 4000, "High-PV-Überschuss", 0, 30000, integer=True)
+        night_pv = bounded(summer, "night_pv_threshold_watt", 2000, "Low-PV-Überschuss", 0, 30000, integer=True)
         if night_pv >= day_pv:
             return "High-PV-Überschuss muss höher sein als Low-PV-Überschuss"
-        if not (1 <= float(summer.get("high_hashrate_th", 110)) <= 200):
-            return "Tag Hashrate Target muss zwischen 1 und 200 TH/s liegen"
-        if not (945 <= int(summer.get("low_power_watt", 945)) <= 7000):
-            return "Nacht Power Target muss zwischen 945 und 7000 W liegen"
-        if not (1 <= int(summer.get("switch_stable_minutes", 5)) <= 120):
-            return "Automatik-Wechselzeit muss zwischen 1 und 120 Minuten liegen"
-    except (TypeError, ValueError):
-        return "Numerische Konfigurationswerte sind ungültig"
+        bounded(summer, "high_hashrate_th", 110, "Tag Hashrate Target", 1, 200)
+        bounded(summer, "low_power_watt", 945, "Nacht Power Target", 945, 7000, integer=True)
+        bounded(summer, "switch_stable_minutes", 5, "Automatik-Wechselzeit", 1, 120, integer=True)
+    except ValueError as exc:
+        return str(exc)
+    except TypeError:
+        return "Konfigurationswerte sind ungültig"
 
     return None
 
 
-def normalize_config_patch(data: dict) -> None:
+def normalize_config_patch(data: dict, repair_invalid: bool = True) -> None:
     mode = data.setdefault("mode", {})
     if mode.get("active") in ("battery_auto", "summer_24h", None):
         mode["active"] = "auto"
@@ -1891,7 +1967,8 @@ def normalize_config_patch(data: dict) -> None:
     try:
         summer["low_power_watt"] = max(945, int(summer.get("low_power_watt", 945)))
     except (TypeError, ValueError):
-        summer["low_power_watt"] = 945
+        if repair_invalid:
+            summer["low_power_watt"] = 945
     modes = data.setdefault("modes", {})
     if modes.get("manual_override") == "run":
         modes["manual_override"] = "auto"
@@ -2041,13 +2118,16 @@ def create_app(cfg_manager: ConfigManager, state: StateStore,
     @app.route("/api/config", methods=["POST"])
     def api_config_post():
         data = request.get_json(silent=True)
-        if not data:
+        if not isinstance(data, dict) or not data:
             return jsonify({"error": "Invalid JSON"}), 400
+        for section in ("fronius", "miner", "control", "summer", "mode", "modes"):
+            if section in data and not isinstance(data[section], dict):
+                return jsonify({"error": f"{section} muss ein Objekt sein"}), 400
         if not data.get("fronius", {}).get("host"):
             return jsonify({"error": "Fronius GEN24 Plus — IP darf nicht leer sein"}), 400
         if data.get("miner", {}).get("api_key", "").startswith("••"):
             data.setdefault("miner", {})["api_key"] = cfg_manager.get()["miner"].get("api_key", "")
-        normalize_config_patch(data)
+        normalize_config_patch(data, repair_invalid=False)
         error = validate_config_patch(data)
         if error:
             return jsonify({"error": error}), 400
